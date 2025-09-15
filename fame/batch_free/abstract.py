@@ -72,8 +72,8 @@ def get_abstract_output_domain_singleton(
     ), "Value Error remaining indices length should match batch_size"
     for i, j in enumerate(remaining_indices):
         if data_format == "channels_first":
-            lower_bound_batch[i, :, j] = lower_bound[:, j]
-            upper_bound_batch[i, :, j] = upper_bound[:, j]
+            lower_bound_batch[i, :, j] = lower_bound_c[:, j]
+            upper_bound_batch[i, :, j] = upper_bound_c[:, j]
         else:
             lower_bound_batch[i, j, :] = lower_bound_c[j, :]
             upper_bound_batch[i, j, :] = upper_bound_c[j, :]

@@ -40,7 +40,7 @@ def get_features_batch(
         np.copy(upper_bound_input[None]) + 0.0, repeats=batch_size, axis=0
     )  # (batch_size, n_in_with_channel)
     input_sample_batch: np.ndarray = np.repeat(
-        np.copy(input_sample[None], 0.0), repeats=batch_size, axis=0
+        np.copy(input_sample[None]+ 0.0), repeats=batch_size, axis=0
     )  # (batch_size, n_in_with_channel)
 
     # step 1: build your PerturbationDomain
@@ -281,13 +281,15 @@ def free_iteratively_k_features(
     n_class: int = 10,
     method: str = "greedy",
     verbose: int = 0,
-) -> np.ndarray:
+) -> list[int]:
+    
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
     lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
     upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
 
     cardinality: np.ndarray = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
+
     abstract_set: np.ndarray = free_at_once_k_features(
         model=model,
         gt_label=gt_label,

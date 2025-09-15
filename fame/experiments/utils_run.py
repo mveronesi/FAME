@@ -69,7 +69,7 @@ def exp_A_1(
                 data_format=data_format,
                 n_class=n_class,
                 method=method,
-                verbose=verbose,
+                verbose=int(verbose>1),
             )
             end_time = time.perf_counter()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
@@ -78,7 +78,7 @@ def exp_A_1(
             xai_size = np.max(abstract_set.sum(-1))
             running_time = end_time - start_time
             if verbose:
-                print("time", running_time)
+                print("{} time".format(method), running_time)
 
             dico["{}_size".format(method)].append(xai_size)
             dico["{}_time".format(method)].append(running_time)
@@ -111,6 +111,8 @@ def exp_A_2(
     start_time: float
     end_time: float
     array_greedy_2_milp: np.ndarray
+    abstract_set:list[int]
+
 
     # create dico structure for the pandas dataframe
     dico = dict()
@@ -123,13 +125,11 @@ def exp_A_2(
     dico["greedy_2_milp"] = []
 
     n_in_wo_channel = int(x_test.shape[-1] / channel)
-    xai_indices = []
-    free_indices = []
-    cardinality = np.array([i for i in range(1, n_in_wo_channel)])
 
     for index in indices:
         if verbose:
             print("ongoing index", index)
+        cardinality = np.array([i for i in range(1, n_in_wo_channel)])
 
         array_greedy_2_milp = np.zeros_like(cardinality)
 
@@ -137,8 +137,10 @@ def exp_A_2(
             start_time = time.perf_counter()
 
             # define input sample and local robustness region
-            input_sample = x_test[index]
-            gt_label = y_test[index]
+            input_sample = np.copy(x_test[index]+0.)
+            gt_label = np.copy(y_test[index]+0)
+            xai_indices = []
+            free_indices = []
 
             abstract_set = free_iteratively_k_features(
                 model=model,
@@ -151,16 +153,16 @@ def exp_A_2(
                 data_format=data_format,
                 n_class=n_class,
                 method=method,
-                verbose=verbose,
+                verbose=int(verbose>1),
             )
             end_time = time.perf_counter()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
-            array_greedy_2_milp = array_greedy_2_milp + coeff * abstract_set.sum(-1)
+            array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
             # for each method compute the largest abstract free set
-            xai_size = np.max(abstract_set.sum(-1))
+            xai_size = len(abstract_set)
             running_time = end_time - start_time
             if verbose:
-                print("time", running_time)
+                print("{} time".format(method), running_time)
 
             dico["{}_size".format(method)].append(xai_size)
             dico["{}_time".format(method)].append(running_time)
