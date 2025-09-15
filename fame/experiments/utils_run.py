@@ -69,7 +69,7 @@ def exp_A_1(
                 data_format=data_format,
                 n_class=n_class,
                 method=method,
-                verbose=int(verbose>1),
+                verbose=int(verbose > 1),
             )
             end_time = time.perf_counter()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
@@ -111,8 +111,7 @@ def exp_A_2(
     start_time: float
     end_time: float
     array_greedy_2_milp: np.ndarray
-    abstract_set:list[int]
-
+    abstract_set: list[int]
 
     # create dico structure for the pandas dataframe
     dico = dict()
@@ -137,8 +136,8 @@ def exp_A_2(
             start_time = time.perf_counter()
 
             # define input sample and local robustness region
-            input_sample = np.copy(x_test[index]+0.)
-            gt_label = np.copy(y_test[index]+0)
+            input_sample = np.copy(x_test[index] + 0.0)
+            gt_label = np.copy(y_test[index] + 0)
             xai_indices = []
             free_indices = []
 
@@ -153,7 +152,7 @@ def exp_A_2(
                 data_format=data_format,
                 n_class=n_class,
                 method=method,
-                verbose=int(verbose>1),
+                verbose=int(verbose > 1),
             )
             end_time = time.perf_counter()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
