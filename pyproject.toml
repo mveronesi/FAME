@@ -6,15 +6,16 @@ build-backend = "setuptools.build_meta"
 name = "FAME"
 description = "Formal Abstract Minimal Explanation for Neural Networks"
 readme = "README.md"
-authors = [
-    {email =""}, # fill after conference
-]
+# fill after conference
+#authors = [
+#    {email =""},
+#]
 requires-python = ">=3.9"
 dependencies =[
     "numpy",
     "cvxpy",
     "keras>=3",
-    "decomon@git+https://github.com/airbus/decomon.git@refactor"
+    "decomon@git+https://github.com/airbus/decomon.git@refactor",
     "pandas"
 
 ]
@@ -23,10 +24,10 @@ dynamic = ["version"]
 
 
 
-
-[project.urls]
-documentation = "" # fill after conference
-repository = "" # fill after conference
+# fill after conference
+#[project.urls]
+#documentation = ""
+#repository = ""
 
 [project.optional-dependencies]
 dev = ["tox>=4.6.4"]
