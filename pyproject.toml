@@ -1,0 +1,84 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "FAME"
+description = "Formal Abstract Minimal Explanation for Neural Networks"
+readme = "README.md"
+authors = [
+    {email =""}, # fill after conference
+]
+requires-python = ">=3.9"
+dependencies =[
+    "numpy",
+    "cvxpy",
+    "keras>=3",
+    "decomon@git+https://github.com/airbus/decomon.git@refactor"
+    "pandas"
+
+]
+license = {text = "MIT"}
+dynamic = ["version"]
+
+
+
+
+[project.urls]
+documentation = "" # fill after conference
+repository = "" # fill after conference
+
+[project.optional-dependencies]
+dev = ["tox>=4.6.4"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["fame*"]
+
+[tool.setuptools_scm]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "--import-mode=importlib",
+]
+
+[tool.black]
+line-length = 100
+target-version = ['py39']
+include = '\.pyi?$'
+exclude = '''
+
+(
+  /(
+      \.eggs         # exclude a few common directories in the
+    | \.git          # root of the project
+    | \.hg
+    | \.mypy_cache
+    | \.tox
+    | \.venv
+    | _build
+    | buck-out
+    | build
+    | dist
+  )/
+  | foo.py           # also separately exclude a file named foo.py in
+                     # the root of the project
+)
+'''
+
+[tool.mypy]
+strict_optional = true
+implicit_optional = false
+check_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "tensorflow.*",
+    "keras.*",
+    "torch.*"
+]
+ignore_missing_imports = true
