@@ -1,6 +1,6 @@
 import keras
 import numpy as np
-from fame.batch_free.abstract import get_abstract_output_domain_singleton
+from fame.abstract_domain.abstract import get_abstract_output_domain as get_abstract_output_domain_singleton
 
 
 def free_domain_with_abstract_interpretation_singleton(
@@ -13,6 +13,7 @@ def free_domain_with_abstract_interpretation_singleton(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
+    decomon_model: keras.models.Model=None
 ) -> list[int]:
     # expand one dimension in the set of remaining features to the
     n_in: int = input_sample.shape[-1]
@@ -28,6 +29,7 @@ def free_domain_with_abstract_interpretation_singleton(
         channel=channel,
         data_format=data_format,
         n_class=n_class,
+        decomon_model=decomon_model
     )
 
     if np.min(np.max(upper, -1)) <= 0:

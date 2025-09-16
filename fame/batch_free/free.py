@@ -4,6 +4,7 @@ import keras
 import numpy as np
 from decomon import clone
 from decomon.perturbation_domain import PerturbationDomain
+from fame.abstract_domain.abstract import get_abstract_model as get_abstract_model_singleton
 from fame.abstract_domain.cardinality_domain import XAIDomain
 from fame.batch_free.utils import encode_matrix
 from keras import KerasTensor as Tensor
@@ -344,6 +345,7 @@ def free_iteratively_k_features(
     # we consider the tightest abstract domain at our disposal: singleton + set of current free features
     # while we find one singleton (we add the one with the least impact according to abstract bound)
     # finish with singleton search
+    decomon_singleton = get_abstract_model_singleton(model=model, n_class=n_class)
     lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
     upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
     singleton_free_index: list
@@ -354,6 +356,10 @@ def free_iteratively_k_features(
         upper_bound=upper_bound_input,
         free_indices=free_indices,
         xai_indices=xai_indices,
+        decomon_model = decomon_singleton,
+        channel=channel,
+        data_format=data_format,
+        n_class=n_class,
     )
 
     while len(singleton_free_index):
@@ -367,6 +373,10 @@ def free_iteratively_k_features(
             upper_bound=upper_bound_input,
             free_indices=free_indices,
             xai_indices=xai_indices,
+            decomon_model=decomon_singleton,
+            channel=channel,
+            data_format=data_format,
+            n_class=n_class,
         )
 
     return free_indices
