@@ -4,7 +4,9 @@ import keras
 import numpy as np
 from decomon import clone
 from decomon.perturbation_domain import PerturbationDomain
-from fame.abstract_domain.abstract import get_abstract_model as get_abstract_model_singleton
+from fame.abstract_domain.abstract import (
+    get_abstract_model as get_abstract_model_singleton,
+)
 from fame.abstract_domain.cardinality_domain import XAIDomain
 from fame.batch_free.utils import encode_matrix
 from keras import KerasTensor as Tensor
@@ -356,7 +358,7 @@ def free_iteratively_k_features(
         upper_bound=upper_bound_input,
         free_indices=free_indices,
         xai_indices=xai_indices,
-        decomon_model = decomon_singleton,
+        decomon_model=decomon_singleton,
         channel=channel,
         data_format=data_format,
         n_class=n_class,
