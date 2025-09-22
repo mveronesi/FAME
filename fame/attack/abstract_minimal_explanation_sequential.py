@@ -1,0 +1,114 @@
+import keras
+import numpy as np
+import torch
+from fame.batch_free.order import get_greedy_order
+from keras import KerasTensor as Tensor
+
+from .fgsm import fast_gradient_method
+from .pgd import projected_gradient_descent
+from .attack import attack, find_singleton_feature_2_add
+
+
+
+
+def find_closest_xai(
+    model: keras.models.Model,
+    gt_label: int,
+    input_sample: Tensor,
+    eps: float = 0.0,
+    xai_indices: list[int] = [],
+    free_indices: list[int] = [],
+    method: str = "fgsm",
+    device: str = "mps",
+    channel: int = 1,
+    data_format: int = "channels_first",
+    n_class: int = 10,
+    traversal_order: str = "greedy",
+) -> tuple[list[int], list[int]]:
+    
+    n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
+
+    lower_bound: np.ndarray = np.maximum(input_sample - eps, 0 * input_sample)
+    upper_bound: np.ndarray = np.minimum(input_sample + eps, 0 * input_sample + 1)
+
+    # start by attacking everything
+    adv_pred_everything:np.array = attack(model=model, 
+           input_sample_batch=input_sample[None], 
+           lower_bound_batch=lower_bound[None], 
+           upper_bound_batch=upper_bound[None],
+           gt_label=gt_label,
+           eps=eps, 
+           method=method) #(1,)
+    if adv_pred_everything[0]==gt_label:
+        print('no attacks could be find, skip the search')
+        return [], [i for i in range(n_in_wo_channel) if not i in xai_indices+free_indices]
+    
+    # compute traversal order
+    if traversal_order == "greedy":
+        remaining_features_with_traversal = get_greedy_order(
+            model=model,
+            input_sample=input_sample,
+            gt_label=gt_label,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
+            xai_indices=xai_indices,
+            free_indices=free_indices,
+            channel=channel,
+            data_format=data_format,
+            n_class=n_class,
+        )
+    else:
+        raise NotImplementedError("implement other orders if needed")
+    
+    remaining_indices:list[int] = [i for i in range(n_in_wo_channel) if not i in free_indices+xai_indices]
+    N:int = len(remaining_indices)
+    # start with the current set of free indices
+    # indices that could be attacked found so far
+
+    potential_xai = find_singleton_feature_2_add(
+            model=model,
+            gt_label=gt_label,
+            input_sample=input_sample,
+            eps=eps,
+            free_indices=free_indices,
+            remaining_indices=remaining_indices,
+            method=method,
+            device=device,
+            channel=channel,
+            data_format=data_format
+        )
+    # remove attackable dimensions from remaining_indices
+    remaining_indices = [i for i in remaining_indices if not i in potential_xai]
+    extra_free=[]
+    for index in remaining_features_with_traversal:
+
+        if index in potential_xai:
+            continue
+        
+        extra_free.append(index)
+        remaining_indices = [i for i in remaining_indices if not i in potential_xai+[index]]
+
+
+
+        if len(remaining_indices):
+            potential_xai_j = find_singleton_feature_2_add(
+                                                        model=model,
+                                                        gt_label=gt_label,
+                                                        input_sample=input_sample,
+                                                        eps=eps,
+                                                        free_indices=free_indices+extra_free,
+                                                        remaining_indices=remaining_indices,
+                                                        method=method,
+                                                        device=device,
+                                                        channel=channel,
+                                                        data_format=data_format
+                                                        )
+            potential_xai+=potential_xai_j
+            remaining_indices = [i for i in remaining_indices if not i in potential_xai]
+        else:
+            # no more features to free
+            break
+        
+    assert len(potential_xai+extra_free)==N, "ValueError"
+
+    return potential_xai, extra_free
