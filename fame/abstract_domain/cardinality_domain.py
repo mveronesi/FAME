@@ -1,7 +1,7 @@
 from typing import Any, List, Union
 
 import numpy as np
-from decomon.perturbation_domain import PerturbationDomain
+from decomon.perturbation_domain import PerturbationDomain, get_upper_box
 from fame.abstract_domain.utils import get_lower_box_l0, get_upper_box_l0
 from keras import KerasTensor as Tensor
 
@@ -35,7 +35,7 @@ class XAIDomain(PerturbationDomain):
         self.free_mask[free_indices] = 1  # 1 if this index has already been free
 
         self.free_mask = self.free_mask[None]  # (1, n_dim)
-        self.xai_mask = self.xai_mask[None]  # # (1, n_dim)
+        self.xai_mask = self.xai_mask[None]  # (1, n_dim)
 
         self.cardinalities: Union[
             int, List[int]
@@ -62,7 +62,6 @@ class XAIDomain(PerturbationDomain):
             cardinality=self.cardinalities,
             **kwargs,
         )
-
         return res
 
     def get_lower(self, x: Tensor, w: Tensor, b: Tensor, **kwargs: Any) -> Tensor:

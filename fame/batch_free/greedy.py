@@ -31,14 +31,17 @@ def get_greedy(
         np.cumsum(W[np.arange(n_g)[:, None], i_max], axis=1) + bias[:, None], -1
     )  # (n_g, n_in)
     # threshold:np.ndarray = np.where(order<=0)
-
     for p, k in enumerate(index_knapsack):
-        threshold_k: np.ndarray = np.where(order[p] <= 0)[0][-1]
+        threshold_k_list:list[int] = np.where(order[p] <= 0)[0]
+        if not len(threshold_k_list):
+            continue 
+        threshold_k: np.ndarray = threshold_k_list[-1]
         coeff_k: list[int] = [
             i for i in i_max[p, :threshold_k] if i not in xai_indices and i not in free_indices
-        ][: card_knapsack[p]]
+        ]
+        coeff_k = coeff_k[: card_knapsack[p]]
         # cut up to cardinality
         if len(coeff_k):  # potentially empty because only xai_indices and free_indices are
-            abstract_free_set[k, np.array(coeff_k)] = 1
+            abstract_free_set[k, np.sort(coeff_k)] = 1
 
     return abstract_free_set

@@ -67,6 +67,7 @@ def get_W(
             np.reshape(w, (batch_size, n_in_wo_channel, channel, -1)), 2
         )  # (batch_size, n_in_wo_channel, n_out)
 
+
     return w
 
 

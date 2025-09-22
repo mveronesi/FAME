@@ -5,6 +5,9 @@ import keras.ops as K
 import numpy as np
 from keras import KerasTensor as Tensor
 
+from fame.abstract_domain.abstract import get_abstract_output_domain
+
+from decomon.perturbation_domain import get_upper_box
 
 def get_upper_box_l0(
     x_min: Tensor,
@@ -19,18 +22,17 @@ def get_upper_box_l0(
     cardinality: Union[int, List[int]],
     **kwargs: Any,
 ) -> Tensor:
-    if data_format == "channels_last":
-        raise NotImplementedError()
+    
 
     missing_batchsize: bool = "missing_batchsize" in kwargs and kwargs["missing_batchsize"]
+
     if missing_batchsize:
         w = w[None]
         b = b[None]
 
     # split into positive and negative components
-    z_value: Tensor = K.cast(0.0, dtype=x_min.dtype)
     n_h: list[int] = len(w.shape[2:])  # output shape of the layer
-    n_in: int = w.shape[1] // channel  # number of input features (without the channel dimension)
+    n_in: int = int(w.shape[1] / channel)  # number of input features (without the channel dimension)
 
     # assuming channels_first
     if data_format == "channels_first":
@@ -108,8 +110,8 @@ def get_upper_box_l0(
     )  # (None, n_h...) sum over channel
     # update bias with free indices !
     free_scoring_samples: Tensor = K.sum(scoring_samples * mask_free_out, 1)
-    bias = bias + free_scoring_samples
 
+    bias = bias + free_scoring_samples    
     return final_score + bias
 
 
@@ -139,3 +141,28 @@ def get_lower_box_l0(
         cardinality=cardinality,
         **kwargs,
     )
+
+def check_is_robust(model, 
+                    input_sample, 
+                    eps, 
+                    channel, 
+                    data_format, 
+                    n_class, 
+                    decomon_model=None):
+    
+    n_in_wo_channel:int = int(input_sample.shape[-1]/channel)
+    free_indices:list[int] = [i for i in range(n_in_wo_channel)]
+    
+    upper :np.array = get_abstract_output_domain(model=model,
+                                                input_sample=input_sample,
+                                                lower_bound=np.maximum(input_sample-eps, 0.),
+                                                upper_bound=np.minimum(input_sample+eps, 1.),
+                                                xai_indices=[],
+                                                free_indices=free_indices,
+                                                channel=channel,
+                                                data_format=data_format,
+                                                n_class=n_class,
+                                                decomon_model=decomon_model
+                                                ) # (1, n_out)
+
+    return np.max(upper)<=0

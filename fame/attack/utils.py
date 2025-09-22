@@ -3,6 +3,8 @@ import numpy as np
 import torch
 
 
+
+
 def clip_eta(eta, norm, eps):
     """
     PyTorch implementation of the clip_eta in utils_tf.
@@ -83,3 +85,72 @@ def optimize_linear(grad, eps, norm=np.inf):
     # norm=1 problem
     scaled_perturbation = eps * optimal_perturbation
     return scaled_perturbation
+
+
+def get_attacks_bounds(input_sample:np.array,
+                       eps:float,
+                       free_indices:list[int],
+                       remaining_indices:list[int],
+                       channel:int=1,
+                       data_format:str="channels_first")->tuple[np.ndarray, np.ndarray, np.ndarray]:
+    
+    n_in_with_channel:int = input_sample.shape[-1]
+    n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
+    batch_size = len(remaining_indices)
+
+    lower_bound_input_ = np.maximum(input_sample - eps, 0 * input_sample)
+    upper_bound_input_ = np.minimum(input_sample + eps, 0 * input_sample + 1)
+
+    # reshape according to data_format
+    lower_bound_c:np.array
+    upper_bound_c:np.array
+    input_sample_c:np.array
+    if data_format=="channels_first":
+        lower_bound_c = np.reshape(lower_bound_input_, (channel, n_in_wo_channel))
+        upper_bound_c = np.reshape(upper_bound_input_, (channel, n_in_wo_channel))
+        input_sample_c = np.reshape(input_sample, (channel, n_in_wo_channel))
+    else:
+        lower_bound_c = np.reshape(lower_bound_input_, (n_in_wo_channel, channel))
+        upper_bound_c = np.reshape(upper_bound_input_, (n_in_wo_channel, channel))
+        input_sample_c = np.reshape(input_sample, (n_in_wo_channel, channel))
+
+    # repeat subdomains
+    # freeze xai features to the nominal value
+    lower_bound_np = np.copy(input_sample_c) + 0.0 # (channel, n_in_wo_channel) if channels_first
+    upper_bound_np = np.copy(input_sample_c) + 0.0
+
+    if len(free_indices):
+        if data_format=="channels_first":
+            lower_bound_np[:, free_indices] = lower_bound_c[:,free_indices]
+            upper_bound_np[:, free_indices] = upper_bound_c[:,free_indices]
+        else:
+            lower_bound_np[free_indices, :] = lower_bound_c[free_indices, :]
+            upper_bound_np[free_indices, :] = upper_bound_c[free_indices, :]
+    # repeat
+    lower_bound_batch = np.repeat(
+        lower_bound_np[None], repeats=batch_size, axis=0
+    )  # (batch_size, channel, n_in_wo_channel)
+    upper_bound_batch = np.repeat(
+        upper_bound_np[None], repeats=batch_size, axis=0
+    )  # (batch_size, channel, n_in_wo_channel)
+    input_sample_batch = np.repeat(
+        input_sample_c[None], repeats=batch_size, axis=0
+    )  # (batch_size, channel, n_in_wo_channel)
+
+    # expand one dimension in the set of remaining features
+    for i, j in enumerate(remaining_indices):
+        if data_format=="channels_first":
+            lower_bound_batch[i, :, j] = lower_bound_c[:,j]
+            upper_bound_batch[i, :, j] = upper_bound_c[:, j]
+        else:
+            lower_bound_batch[i, j, :] = lower_bound_c[j,:]
+            upper_bound_batch[i, j, :] = upper_bound_c[j,:]
+
+    # reshape to fit the input shape of the model
+    lower_bound_batch = np.reshape(lower_bound_batch, (batch_size, n_in_with_channel))
+    upper_bound_batch = np.reshape(upper_bound_batch, (batch_size, n_in_with_channel))
+    input_sample_batch = np.reshape(input_sample_batch, (batch_size, n_in_with_channel))
+
+    return input_sample_batch, lower_bound_batch, upper_bound_batch
+
+

@@ -1,45 +1,51 @@
 # run experiment A.2 and B
-from fame.experiments import exp_A_1, exp_A_2, exp_A_2_no_overwrite, exp_B_no_overwrite, exp_C_no_overwrite
+from fame.experiments import exp_A_2_no_overwrite, exp_B_no_overwrite, exp_C_no_overwrite
 from keras.models import load_model
 from keras.datasets import mnist
 import pandas as pd
 import os
 import numpy as np
+import pickle
 from fame.abstract_domain.utils import check_is_robust 
 
 
 # run in shell:
-# for i in {1..92}; do echo "Run $i"; python script_mnist_10x2.py; done
+# for i in {1..62}; do echo "Run $i"; python script_gtsrb_10x2.py; done
+
 
 def get_model(MODEL):
-    return load_model('./models/xairobas_mnist-{}.keras'.format(MODEL))
+    return load_model('./models/xairobas_gtsrb-{}.keras'.format(MODEL))
 
 def get_data():
     """
-    download and process MNIST data.
+    download and process GTSRB data.
     """
-    (x_train, y_train), (x_test, y_test) = mnist.load_data()
-    x_train = x_train.reshape(x_train.shape[0], 28*28)
-    x_test = x_test.reshape(x_test.shape[0], 28*28)
-    x_train = x_train.astype('float32') / 255
+    filename = "gtsrb.pickle"
+    with open(filename, 'rb') as handle:
+        data = pickle.load(handle)
+    x_test, y_test = data['x_test'], data['y_test']
     x_test = x_test.astype('float32') / 255
+    x_test = np.reshape(x_test, (-1, 3072))
 
-    X = np.concatenate([x_train, x_test])
-    Y = np.concatenate([y_train, y_test])
-
-    return X, Y
+    return x_test, y_test
 
 def get_indices():
-    return [0, 1, 2, 4, 5, 6, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99]
+
+    return [i for i in range(100) if not i in [
+    1, 2, 3, 4, 8, 11, 16, 20, 22, 24, 26, 31, 42, 43, 44, 46, 49, 50, 53, 55,
+    56, 57, 58, 64, 67, 71, 72, 74, 77, 78, 79, 81, 83, 86, 87, 92, 93, 94,
+    1, 2, 3, 4, 8, 11, 16, 20, 22, 24, 26, 31, 42, 43, 44, 46, 49, 50, 53, 55,
+    56, 57, 58, 64, 67, 71, 72, 74, 77, 78, 79, 81, 83, 86, 87, 92, 93, 94,
+    ]]
 
 
-def func_mnist_10x2_expA2():
-    DATASET='MNIST'
+def func_gtsrb_10x2_expA2():
+    DATASET='GTSRB'
     MODEL='10x2'
-    eps=0.05
+    eps=0.01
 
-    channel=1
-    data_format="channels_first"
+    channel=3
+    data_format="channels_last"
     n_class=10
     ## load the model and data
 
@@ -55,6 +61,7 @@ def func_mnist_10x2_expA2():
                         data_format=data_format, 
                         n_class=n_class)
     indices = [i for i in indices if not is_robust(i)]
+
     
     dataframe_repository='./results'
     EXP="A_2"
@@ -80,13 +87,14 @@ def func_mnist_10x2_expA2():
         n_class = n_class,
     )
 
-def func_mnist_10x2_expB():
-    DATASET='MNIST'
-    MODEL='10x2'
-    eps=0.05
+def func_gtsrb_10x2_expB():
 
-    channel=1
-    data_format="channels_first"
+    DATASET='GTSRB'
+    MODEL='10x2'
+    eps=0.01
+
+    channel=3
+    data_format="channels_last"
     n_class=10
     ## load the model and data
 
@@ -102,7 +110,6 @@ def func_mnist_10x2_expB():
                         data_format=data_format, 
                         n_class=n_class)
     indices = [i for i in indices if not is_robust(i)]
-
 
     dataframe_repository='./results'
     EXP="B"
@@ -132,13 +139,14 @@ def func_mnist_10x2_expB():
         n_class = n_class,
     )
 
-def func_mnist_10x2_expC():
-    DATASET='MNIST'
-    MODEL='10x2'
-    eps=0.05
+def func_gtsrb_10x2_expC():
 
-    channel=1
-    data_format="channels_first"
+    DATASET='GTSRB'
+    MODEL='10x2'
+    eps=0.01
+
+    channel=3
+    data_format="channels_last"
     n_class=10
     ## load the model and data
 
@@ -154,59 +162,6 @@ def func_mnist_10x2_expC():
                         data_format=data_format, 
                         n_class=n_class)
     indices = [i for i in indices if not is_robust(i)]
-
-
-    dataframe_repository='./results'
-    EXP="C"
-    filename = "{}_{}_{}".format(DATASET, MODEL, EXP)
-    dataframe_filename = filename
-
-    if os.path.isfile("{}/{}.csv".format(dataframe_repository, dataframe_filename)):
-        df_before = pd.read_csv("{}/{}.csv".format(dataframe_repository, dataframe_filename))
-        i = len(df_before.index)
-    else:
-        i=0
-
-    exp_C_no_overwrite(
-        model=k_model,
-        x_test=x_test,
-        y_test=y_test,
-        indices=[indices[i]],
-        eps=eps,
-        dataframe_repository=dataframe_repository,
-        dataframe_filename=dataframe_filename,
-        channel=channel,
-        data_format=data_format,
-        method="greedy",
-        attack="fgsm",
-        traversal_order="greedy",
-        device="mps",
-        n_class = n_class,
-    )
-
-def func_mnist_10x2_expC():
-    DATASET='MNIST'
-    MODEL='10x2'
-    eps=0.05
-
-    channel=1
-    data_format="channels_first"
-    n_class=10
-    ## load the model and data
-
-    indices = get_indices()
-    k_model = get_model(MODEL)
-    x_test, y_test = get_data()
-
-    def is_robust(j):
-        return check_is_robust(model=k_model, 
-                        input_sample=x_test[j], 
-                        eps=eps, 
-                        channel=channel, 
-                        data_format=data_format, 
-                        n_class=n_class)
-    indices = [i for i in indices if not is_robust(i)]
-
 
     dataframe_repository='./results'
     EXP="C"
@@ -237,4 +192,4 @@ def func_mnist_10x2_expC():
     )
 
 if __name__ == "__main__":
-    func_mnist_10x2_expC()
+    func_gtsrb_10x2_expC()

@@ -14,8 +14,9 @@ from keras.layers import Input
 
 from .greedy import get_greedy
 from .milp import get_milp
-from .singleton import free_domain_with_abstract_interpretation_singleton
+from .singleton import free_with_binary_search, free_with_singleton_search
 from .utils import get_b, get_free_mask, get_W, get_xai_mask
+
 
 
 def get_features_batch(
@@ -283,14 +284,16 @@ def free_iteratively_k_features(
     data_format: str = "channels_first",
     n_class: int = 10,
     method: str = "greedy",
+    refining_domain:bool=True,
     verbose: int = 0,
-) -> list[int]:
+) -> tuple[list[int], list[int]]:
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
     lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
     upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
 
     cardinality: np.ndarray = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
+    abstract_set = np.zeros((1,)) # temporary
 
     abstract_set: np.ndarray = free_at_once_k_features(
         model=model,
@@ -308,41 +311,46 @@ def free_iteratively_k_features(
         verbose=verbose,
     )
 
-    while (
-        abstract_set.sum(-1).max() != 0
-    ):  # we have found new input features to free among remaining indices
-        i_solution = np.argmax(
-            np.sum(abstract_set, -1)
-        )  # find the cardinality that propose the largest cardinality to free
-        free_indices += [
-            i for (i, k) in enumerate(abstract_set[i_solution]) if k == 1 and not i in free_indices
-        ]
-        # update cardinality
-        cardinality = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
-        if not len(cardinality):
-            raise ValueError(
-                "cardinality should not be empty as the local region is not robust unless the local region is robust"
+
+    if refining_domain:
+        while (
+            abstract_set.sum(-1).max() != 0
+        ):  # we have found new input features to free among remaining indices
+            i_solution = np.argmax(
+                np.sum(abstract_set, -1)
+            )  # find the cardinality that propose the largest cardinality to free
+
+            free_indices += [
+                i for (i, k) in enumerate(abstract_set[i_solution]) if k == 1 and not i in free_indices
+            ]
+
+            # update cardinality
+            cardinality = np.array([i for i in range(1, n_in_wo_channel+1 - len(free_indices))])
+
+            if not len(cardinality):
+                raise ValueError(
+                    "cardinality should not be empty as the local region is not robust unless the local region is robust"
+                )
+
+            # overwrite the bounds in case they have been corrupted
+            lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+
+            abstract_set = free_at_once_k_features(
+                model=model,
+                gt_label=gt_label,
+                input_sample=np.copy(input_sample) + 0.0,
+                lower_bound_input=lower_bound_input,
+                upper_bound_input=upper_bound_input,
+                xai_indices=xai_indices,
+                free_indices=free_indices,
+                cardinality=cardinality,
+                channel=channel,
+                data_format=data_format,
+                n_class=n_class,
+                method=method,
+                verbose=0,
             )
-
-        # overwrite the bounds in case they have been corrupted
-        lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-        upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
-
-        abstract_set = free_at_once_k_features(
-            model=model,
-            gt_label=gt_label,
-            input_sample=np.copy(input_sample) + 0.0,
-            lower_bound_input=lower_bound_input,
-            upper_bound_input=upper_bound_input,
-            xai_indices=xai_indices,
-            free_indices=free_indices,
-            cardinality=cardinality,
-            channel=channel,
-            data_format=data_format,
-            n_class=n_class,
-            method=method,
-            verbose=0,
-        )
 
     # we consider the tightest abstract domain at our disposal: singleton + set of current free features
     # while we find one singleton (we add the one with the least impact according to abstract bound)
@@ -351,34 +359,22 @@ def free_iteratively_k_features(
     lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
     upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
     singleton_free_index: list
-    singleton_free_index = free_domain_with_abstract_interpretation_singleton(
+    singleton_free_index=free_with_binary_search(
         model=model,
         input_sample=np.copy(input_sample) + 0.0,
         lower_bound=lower_bound_input,
         upper_bound=upper_bound_input,
         free_indices=free_indices,
+        potential_candidates=None, # 
         xai_indices=xai_indices,
         decomon_model=decomon_singleton,
         channel=channel,
         data_format=data_format,
         n_class=n_class,
     )
+        
+    return free_indices, singleton_free_index
 
-    while len(singleton_free_index):
-        lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-        upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
-        free_indices += singleton_free_index
-        singleton_free_index = free_domain_with_abstract_interpretation_singleton(
-            model=model,
-            input_sample=input_sample,
-            lower_bound=lower_bound_input,
-            upper_bound=upper_bound_input,
-            free_indices=free_indices,
-            xai_indices=xai_indices,
-            decomon_model=decomon_singleton,
-            channel=channel,
-            data_format=data_format,
-            n_class=n_class,
-        )
 
-    return free_indices
+
+    
