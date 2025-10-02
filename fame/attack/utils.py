@@ -1,18 +1,25 @@
 # source: https://github.com/cleverhans-lab/cleverhans/blob/master/cleverhans/torch/utils.py
 import numpy as np
 import torch
+from keras import KerasTensor as Tensor
 
 
+def clip_eta(eta: Tensor, norm: int, eps: float) -> Tensor:
+    """Projects a perturbation tensor onto a specified L-p norm ball.
 
+    This function takes a batch of perturbation vectors (`eta`) and modifies them
+    so that the norm of each vector does not exceed a given radius `eps`. This is
+    the projection step used in algorithms like Projected Gradient Descent (PGD).
 
-def clip_eta(eta, norm, eps):
+    Args:
+        eta: The perturbation tensor to be clipped, with shape (batch_size, ...).
+        norm: The norm order ($L_\infty$ or $L_2$). Accepts `np.inf` or `2`.
+        eps: The radius of the norm ball (i.e., the maximum allowed norm).
+
+    Returns:
+        The clipped perturbation tensor, with the same shape as `eta`.
     """
-    PyTorch implementation of the clip_eta in utils_tf.
 
-    :param eta: Tensor
-    :param norm: np.inf, 1, or 2
-    :param eps: float
-    """
     if norm not in [np.inf, 1, 2]:
         raise ValueError("norm must be np.inf, 1, or 2.")
 
@@ -33,16 +40,21 @@ def clip_eta(eta, norm, eps):
     return eta
 
 
-def optimize_linear(grad, eps, norm=np.inf):
-    """
-    Solves for the optimal input to a linear function under a norm constraint.
+def optimize_linear(grad: Tensor, eps: float, norm: int = np.inf) -> Tensor:
+    """Computes the optimal perturbation for a given gradient and L-p norm constraint.
 
-    Optimal_perturbation = argmax_{eta, ||eta||_{norm} < eps} dot(eta, grad)
+    This function solves the maximization problem `max_{||p||_p <= eps} (grad^T * p)`.
+    The solution `p` is the perturbation that, when added to an input, causes the
+    largest possible increase in a linear approximation of the loss function.
+    This is the core calculation in single-step adversarial attacks like FGSM.
 
-    :param grad: Tensor, shape (N, d_1, ...). Batch of gradients
-    :param eps: float. Scalar specifying size of constraint region
-    :param norm: np.inf, 1, or 2. Order of norm constraint.
-    :returns: Tensor, shape (N, d_1, ...). Optimal perturbation
+    Args:
+        grad: The gradient of the loss function with respect to the input tensor.
+        eps: The radius of the $L_p$-norm ball, defining the perturbation budget.
+        norm: The norm order ($L_\infty$, $L_1$, or $L_2$). Defaults to `np.inf`.
+
+    Returns:
+        A tensor representing the optimal perturbation, scaled by `eps`.
     """
 
     red_ind = list(range(1, len(grad.size())))
@@ -87,14 +99,46 @@ def optimize_linear(grad, eps, norm=np.inf):
     return scaled_perturbation
 
 
-def get_attacks_bounds(input_sample:np.array,
-                       eps:float,
-                       free_indices:list[int],
-                       remaining_indices:list[int],
-                       channel:int=1,
-                       data_format:str="channels_first")->tuple[np.ndarray, np.ndarray, np.ndarray]:
-    
-    n_in_with_channel:int = input_sample.shape[-1]
+def get_attacks_bounds(
+    input_sample: np.array,
+    eps: float,
+    free_indices: list[int],
+    remaining_indices: list[int],
+    channel: int = 1,
+    data_format: str = "channels_first",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Constructs a batch of input domains for testing the vulnerability of single features.
+
+    This function generates a batch of inputs and their corresponding perturbation
+    bounds, designed for running parallel adversarial attacks. Each item in the
+    output batch corresponds to one feature from `remaining_indices`.
+
+    For each item `i` in the batch, the corresponding domain allows perturbations on:
+    1. All features specified in `free_indices`.
+    2. The single feature `remaining_indices[i]`.
+    All other features are fixed to their nominal `input_sample` values.
+
+    This setup is ideal for efficiently finding which individual features can
+    cause an attack when perturbed in a specific context.
+
+    Args:
+        input_sample: A single, nominal input point (e.g., an image).
+        eps: The radius of the $L_\infty$ perturbation.
+        free_indices: A list of feature indices that are always allowed to be
+            perturbed in the background.
+        remaining_indices: A list of feature indices to be tested one by one.
+            The batch size will be `len(remaining_indices)`.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+
+    Returns:
+        A tuple of three numpy arrays, each with a leading batch dimension:
+        - `input_sample_batch`: The nominal input, repeated for the batch size.
+        - `lower_bound_batch`: The lower bounds for each constructed domain.
+        - `upper_bound_batch`: The upper bounds for each constructed domain.
+    """
+
+    n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
     batch_size = len(remaining_indices)
 
@@ -102,10 +146,10 @@ def get_attacks_bounds(input_sample:np.array,
     upper_bound_input_ = np.minimum(input_sample + eps, 0 * input_sample + 1)
 
     # reshape according to data_format
-    lower_bound_c:np.array
-    upper_bound_c:np.array
-    input_sample_c:np.array
-    if data_format=="channels_first":
+    lower_bound_c: np.array
+    upper_bound_c: np.array
+    input_sample_c: np.array
+    if data_format == "channels_first":
         lower_bound_c = np.reshape(lower_bound_input_, (channel, n_in_wo_channel))
         upper_bound_c = np.reshape(upper_bound_input_, (channel, n_in_wo_channel))
         input_sample_c = np.reshape(input_sample, (channel, n_in_wo_channel))
@@ -116,13 +160,13 @@ def get_attacks_bounds(input_sample:np.array,
 
     # repeat subdomains
     # freeze xai features to the nominal value
-    lower_bound_np = np.copy(input_sample_c) + 0.0 # (channel, n_in_wo_channel) if channels_first
+    lower_bound_np = np.copy(input_sample_c) + 0.0  # (channel, n_in_wo_channel) if channels_first
     upper_bound_np = np.copy(input_sample_c) + 0.0
 
     if len(free_indices):
-        if data_format=="channels_first":
-            lower_bound_np[:, free_indices] = lower_bound_c[:,free_indices]
-            upper_bound_np[:, free_indices] = upper_bound_c[:,free_indices]
+        if data_format == "channels_first":
+            lower_bound_np[:, free_indices] = lower_bound_c[:, free_indices]
+            upper_bound_np[:, free_indices] = upper_bound_c[:, free_indices]
         else:
             lower_bound_np[free_indices, :] = lower_bound_c[free_indices, :]
             upper_bound_np[free_indices, :] = upper_bound_c[free_indices, :]
@@ -139,12 +183,12 @@ def get_attacks_bounds(input_sample:np.array,
 
     # expand one dimension in the set of remaining features
     for i, j in enumerate(remaining_indices):
-        if data_format=="channels_first":
-            lower_bound_batch[i, :, j] = lower_bound_c[:,j]
+        if data_format == "channels_first":
+            lower_bound_batch[i, :, j] = lower_bound_c[:, j]
             upper_bound_batch[i, :, j] = upper_bound_c[:, j]
         else:
-            lower_bound_batch[i, j, :] = lower_bound_c[j,:]
-            upper_bound_batch[i, j, :] = upper_bound_c[j,:]
+            lower_bound_batch[i, j, :] = lower_bound_c[j, :]
+            upper_bound_batch[i, j, :] = upper_bound_c[j, :]
 
     # reshape to fit the input shape of the model
     lower_bound_batch = np.reshape(lower_bound_batch, (batch_size, n_in_with_channel))
@@ -152,5 +196,3 @@ def get_attacks_bounds(input_sample:np.array,
     input_sample_batch = np.reshape(input_sample_batch, (batch_size, n_in_with_channel))
 
     return input_sample_batch, lower_bound_batch, upper_bound_batch
-
-

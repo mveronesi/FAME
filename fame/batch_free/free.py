@@ -18,7 +18,6 @@ from .singleton import free_with_binary_search, free_with_singleton_search
 from .utils import get_b, get_free_mask, get_W, get_xai_mask
 
 
-
 def get_features_batch(
     model: keras.models.Model,
     gt_label: int,
@@ -32,6 +31,41 @@ def get_features_batch(
     data_format: str = "channels_first",
     n_class: int = 10,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Performs a batched abstract interpretation pass over a hybrid L-inf/L0 domain.
+
+    This function is a low-level wrapper around `decomon` that analyzes a complex
+    perturbation space in a single, batched forward pass. It constructs a
+    specialized `XAIDomain` which models a hybrid perturbation where:
+    1. A set of `free_indices` are always perturbed within an L-infinity ball.
+    2. Up to `k` features (defined by `cardinality`) from the `xai_indices`
+       pool can also be perturbed (L0-norm constraint).
+
+    It then performs backward bound propagation (CROWN) to extract both the final
+    concrete upper bounds and the parameters of the final affine relaxation.
+
+    Args:
+        model: The Keras model to analyze.
+        gt_label: The ground-truth class label.
+        input_sample: The nominal input point.
+        lower_bound_input: The lower bounds of the L-infinity perturbation.
+        upper_bound_input: The upper bounds of the L-infinity perturbation.
+        xai_indices: A list of feature indices subject to the L0 constraint.
+        free_indices: A list of feature indices always perturbed under L-infinity.
+        cardinality: A numpy array where each element specifies the L0 budget (`k`)
+            for the corresponding item in the batch.
+        channel: The number of channels in the input data.
+        data_format: The data format, "channels_first" or "channels_last".
+        n_class: The number of output classes of the model.
+
+    Returns:
+        A tuple of four numpy arrays:
+        - `w_u`: The weights of the final affine upper bound with respect to the
+          input features, shape `(batch, n_features, n_outputs)`.
+        - `b_u`: The bias of the final affine upper bound, shape `(batch, n_outputs)`.
+        - `upper`: The concrete (IBP) upper bounds on the logit differences.
+        - `box`: The input domain tensor `[lower, upper, center]` used for analysis.
+    """
+
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
     batch_size: int = len(cardinality)
@@ -99,6 +133,43 @@ def free_at_once_k_features(
     method: str = "greedy",
     verbose: int = 0,
 ) -> np.ndarray:
+    """Finds the largest safe set of features, given cardinality constraints.
+
+    This function attempts to find the largest set of features that can be added
+    to the "robust set" (i.e., allowed to be perturbed) without violating the
+    model's overall robustness. It solves this for a batch of different L0-norm
+    cardinality constraints (`k`).
+
+    The process involves:
+    1.  Using abstract interpretation (`get_features_batch`) to obtain an affine
+        approximation of the network's output logits.
+    2.  Formulating a 0-1 Knapsack-like optimization problem from this approximation.
+        The goal is to select the maximum number of features to "free" while
+        ensuring the certified upper bound on logit differences remains non-positive.
+    3.  Solving this problem using either an exact MILP solver or a fast greedy heuristic.
+
+    Args:
+        model: The Keras model to analyze.
+        gt_label: The ground-truth class label.
+        input_sample: The nominal input point.
+        lower_bound_input: The lower bounds of the L-infinity perturbation.
+        upper_bound_input: The upper bounds of the L-infinity perturbation.
+        xai_indices: Candidate features for the knapsack problem.
+        free_indices: Features that are always considered robust/perturbed.
+        cardinality: A numpy array where each element specifies the L0 budget (`k`)
+            for the corresponding item in the batch.
+        channel: The number of channels in the input data.
+        data_format: The data format, "channels_first" or "channels_last".
+        n_class: The number of output classes.
+        method: The optimization method to use: "milp" for an exact solution or
+            "greedy" for a fast approximation.
+        verbose: Verbosity level.
+
+    Returns:
+        A numpy array of shape `(batch_size, n_features)`, where each row is a
+        binary mask indicating the set of features that can be safely made robust
+        for the corresponding cardinality constraint.
+    """
     lower_bound: np.ndarray = np.copy(lower_bound_input) + 0.0
     upper_bound: np.ndarray = np.copy(upper_bound_input) + 0.0
 
@@ -284,16 +355,55 @@ def free_iteratively_k_features(
     data_format: str = "channels_first",
     n_class: int = 10,
     method: str = "greedy",
-    refining_domain:bool=True,
+    refining_domain: bool = True,
     verbose: int = 0,
 ) -> tuple[list[int], list[int]]:
+    """Iteratively finds the largest possible set of robust features for a given input.
+
+    This function implements a high-level iterative algorithm to discover the
+    largest set of features that can be perturbed (the "free set") without
+    affecting the model's prediction. It provides a formal under-approximation
+    of the minimal set of features required to explain a prediction.
+
+    The process involves two main phases:
+    1.  **Iterative Set Expansion**: If `refining_domain` is True, it repeatedly
+        calls `free_at_once_k_features` to find large groups of features that
+        can be safely added to the robust set. After each successful find, it
+        expands `free_indices` and repeats the search on the smaller remaining
+        pool of features until no more groups can be found.
+    2.  **Singleton Refinement**: After the group expansion phase, it performs a
+        final, fine-grained search (`free_with_binary_search`) to check if any
+        of the remaining individual features can also be safely added to the
+        robust set.
+
+    Args:
+        model: The Keras model to analyze.
+        gt_label: The ground-truth class label.
+        input_sample: The nominal input point.
+        eps: The radius of the $L_\infty$ perturbation.
+        xai_indices: A list of feature indices to be explained.
+        free_indices: An initial list of features already known to be robust.
+        channel: The number of channels in the input data.
+        data_format: The data format, "channels_first" or "channels_last".
+        n_class: The number of output classes.
+        method: The optimization method ("milp" or "greedy") for the sub-problem.
+        refining_domain: If True, iteratively expands the robust set until a
+            fixed point is reached.
+        verbose: Verbosity level.
+
+    Returns:
+        A tuple of two lists of feature indices:
+        - The first list is the final, largest set of "free" (robust) features found.
+        - The second list contains the remaining features that could not be
+          proven robust by this method.
+    """
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
     lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
     upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
 
     cardinality: np.ndarray = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
-    abstract_set = np.zeros((1,)) # temporary
+    abstract_set = np.zeros((1,))  # temporary
 
     abstract_set: np.ndarray = free_at_once_k_features(
         model=model,
@@ -311,7 +421,6 @@ def free_iteratively_k_features(
         verbose=verbose,
     )
 
-
     if refining_domain:
         while (
             abstract_set.sum(-1).max() != 0
@@ -321,11 +430,13 @@ def free_iteratively_k_features(
             )  # find the cardinality that propose the largest cardinality to free
 
             free_indices += [
-                i for (i, k) in enumerate(abstract_set[i_solution]) if k == 1 and not i in free_indices
+                i
+                for (i, k) in enumerate(abstract_set[i_solution])
+                if k == 1 and not i in free_indices
             ]
 
             # update cardinality
-            cardinality = np.array([i for i in range(1, n_in_wo_channel+1 - len(free_indices))])
+            cardinality = np.array([i for i in range(1, n_in_wo_channel + 1 - len(free_indices))])
 
             if not len(cardinality):
                 raise ValueError(
@@ -359,22 +470,18 @@ def free_iteratively_k_features(
     lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
     upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
     singleton_free_index: list
-    singleton_free_index=free_with_binary_search(
+    singleton_free_index = free_with_binary_search(
         model=model,
         input_sample=np.copy(input_sample) + 0.0,
         lower_bound=lower_bound_input,
         upper_bound=upper_bound_input,
         free_indices=free_indices,
-        potential_candidates=None, # 
+        potential_candidates=None,  #
         xai_indices=xai_indices,
         decomon_model=decomon_singleton,
         channel=channel,
         data_format=data_format,
         n_class=n_class,
     )
-        
+
     return free_indices, singleton_free_index
-
-
-
-    

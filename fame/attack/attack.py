@@ -1,28 +1,60 @@
 import keras
-import torch
 import numpy as np
+import torch
 from keras import KerasTensor as Tensor
+
 from .fgsm import fast_gradient_method
 from .pgd import projected_gradient_descent
 from .utils import get_attacks_bounds
 
 
-def attack(model:keras.models.Model, 
-           input_sample_batch:np.ndarray, 
-           lower_bound_batch:np.ndarray, 
-           upper_bound_batch:np.ndarray,
-           gt_label:int,
-           eps:float, 
-           method:str,
-           device:str="mps")->np.ndarray:
-    
+def attack(
+    model: keras.models.Model,
+    input_sample_batch: np.ndarray,
+    lower_bound_batch: np.ndarray,
+    upper_bound_batch: np.ndarray,
+    gt_label: int,
+    eps: float,
+    method: str,
+    device: str = "mps",
+) -> np.ndarray:
+    """Generates adversarial examples for a batch of inputs using a specified method.
+
+    This function is a wrapper that performs adversarial attacks (either FGSM or PGD)
+    on a batch of inputs. It takes a Keras model and numpy arrays, converts them
+    to PyTorch tensors to leverage attack libraries, generates the adversarial
+    examples, and returns the model's predictions on them as a numpy array.
+
+    The generated adversarial examples are constrained to lie within the provided
+    per-sample lower and upper bounds.
+
+    Args:
+        model: The Keras model to attack. It will be temporarily converted for use
+            with PyTorch.
+        input_sample_batch: A batch of nominal input samples.
+        lower_bound_batch: A batch of lower bound arrays, defining the clipping
+            region for each sample.
+        upper_bound_batch: A batch of upper bound arrays, defining the clipping
+            region for each sample.
+        gt_label: The ground-truth label, used as the target for the attack
+            (i.e., the attack tries to move the prediction away from this label).
+        eps: The perturbation budget (epsilon) for the $L_\infty$ norm.
+        method: The attack algorithm to use. Supported options are "fgsm" and "pgd".
+        device: The computation device (e.g., "mps", "cuda", "cpu").
+
+    Returns:
+        A numpy array containing the model's predicted class labels for the
+        generated adversarial examples.
+    """
 
     model.to(device)
-    input_t:Tensor=torch.tensor(input_sample_batch, dtype=torch.float32, device=device)
-    lower_t:Tensor=torch.tensor(lower_bound_batch, dtype=torch.float32, device=device)
-    upper_t:Tensor=torch.tensor(upper_bound_batch, dtype=torch.float32, device=device)
+    input_t: Tensor = torch.tensor(input_sample_batch, dtype=torch.float32, device=device)
+    lower_t: Tensor = torch.tensor(lower_bound_batch, dtype=torch.float32, device=device)
+    upper_t: Tensor = torch.tensor(upper_bound_batch, dtype=torch.float32, device=device)
     batch_size = len(input_sample_batch)
-    gt_label_t:Tensor=torch.tensor(np.array([gt_label] * batch_size, dtype="int64"), dtype=torch.int64, device=device)
+    gt_label_t: Tensor = torch.tensor(
+        np.array([gt_label] * batch_size, dtype="int64"), dtype=torch.int64, device=device
+    )
 
     if method == "fgsm":
         x_adv_class = fast_gradient_method(
@@ -36,8 +68,8 @@ def attack(model:keras.models.Model,
             y=gt_label_t,
         )
     else:
-        eps_iter = eps/10. # arbitraty (do a config file)
-        nb_iter = 50 # arbitraty (do a config file)
+        eps_iter = eps / 10.0  # arbitraty (do a config file)
+        nb_iter = 50  # arbitraty (do a config file)
         x_adv_class = projected_gradient_descent(
             model_fn=model,
             x=input_t,
@@ -49,11 +81,12 @@ def attack(model:keras.models.Model,
             clip_min=lower_t,
             clip_max=upper_t,
             y=gt_label_t,
-            rand_init=False, # for reproducibility
+            rand_init=False,  # for reproducibility
         )
     adv_pred = model.predict(x_adv_class, verbose=0).argmax(-1)
 
-    return adv_pred #(batch_size,)
+    return adv_pred  # (batch_size,)
+
 
 def find_singleton_feature_2_add(
     model: keras.models.Model,
@@ -61,31 +94,65 @@ def find_singleton_feature_2_add(
     input_sample: Tensor,
     eps: float = 0.0,
     free_indices: list[int] = [],
-    remaining_indices:list[int]=[], # attack only those features
+    remaining_indices: list[int] = [],  # attack only those features
     method: str = "fgsm",
     device: str = "mps",
     channel: int = 1,
-    data_format="channels_first"
+    data_format="channels_first",
 ) -> list[int]:
+    """Identifies individual features that can cause an adversarial attack.
+
+    This function tests the vulnerability of each feature in `remaining_indices`
+    one by one. For each feature, it constructs a perturbation domain where a set of
+    `free_indices` are always allowed to be perturbed, and additionally, the
+    single feature under test is also allowed to be perturbed.
+
+    It then runs an adversarial attack within each of these constructed domains.
+    The function returns a list of all features from `remaining_indices` that
+    were sufficient to cause a misclassification in their respective test.
+
+    Args:
+        model: The Keras model to be analyzed.
+        gt_label: The correct label to check for misclassification against.
+        input_sample: The single, nominal input point.
+        eps: The radius of the $L_\infty$ perturbation.
+        free_indices: A list of feature indices that are always considered
+            perturbed in the background of every test.
+        remaining_indices: The pool of features to test individually for their
+            ability to cause an attack.
+        method: The adversarial attack algorithm to use.
+        device: The computation device for the attack.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+
+    Returns:
+        A list of indices from `remaining_indices` corresponding to features
+        that were found to be vulnerable.
+    """
+
     model.to(device)
     model.eval()
 
-    input_sample_batch, lower_bound_batch,  upper_bound_batch= get_attacks_bounds(input_sample=input_sample,
-                       eps=eps,
-                       free_indices=free_indices,
-                       remaining_indices=remaining_indices,
-                       channel=channel,
-                       data_format=data_format)
+    input_sample_batch, lower_bound_batch, upper_bound_batch = get_attacks_bounds(
+        input_sample=input_sample,
+        eps=eps,
+        free_indices=free_indices,
+        remaining_indices=remaining_indices,
+        channel=channel,
+        data_format=data_format,
+    )
     batch_size: int = len(remaining_indices)
 
-    adv_pred:np.ndarray=attack(model=model, 
-           input_sample_batch=input_sample_batch, 
-           lower_bound_batch=lower_bound_batch, 
-           upper_bound_batch=upper_bound_batch,
-           gt_label=gt_label,
-           eps=eps, 
-           method=method,
-           device=device) # (batch_size,)
+    adv_pred: np.ndarray = attack(
+        model=model,
+        input_sample_batch=input_sample_batch,
+        lower_bound_batch=lower_bound_batch,
+        upper_bound_batch=upper_bound_batch,
+        gt_label=gt_label,
+        eps=eps,
+        method=method,
+        device=device,
+    )  # (batch_size,)
 
     xai_set: list[int] = [
         remaining_indices[j] for j in range(batch_size) if adv_pred[j] != gt_label

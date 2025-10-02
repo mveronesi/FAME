@@ -3,11 +3,10 @@ from typing import Any, List, Tuple, Union
 import keras
 import keras.ops as K
 import numpy as np
+from decomon.perturbation_domain import get_upper_box
+from fame.abstract_domain.abstract import get_abstract_output_domain
 from keras import KerasTensor as Tensor
 
-from fame.abstract_domain.abstract import get_abstract_output_domain
-
-from decomon.perturbation_domain import get_upper_box
 
 def get_upper_box_l0(
     x_min: Tensor,
@@ -22,7 +21,44 @@ def get_upper_box_l0(
     cardinality: Union[int, List[int]],
     **kwargs: Any,
 ) -> Tensor:
-    
+    """Computes the upper bound of a linear operation over a hybrid L-infinity/L0 domain.
+
+    This function implements an abstract transformer for a linear layer (`w*x + b`)
+    over a complex perturbation domain. The domain consists of three types of
+    features:
+    1.  "Free" features (`mask_free`), which are always perturbed within an
+        L-infinity box defined by `x_min` and `x_max`.
+    2.  "XAI" candidate features (`mask_xai`) which remain at their nominal `x_center` value.
+    3. All other features (remaining features) from which up to `cardinality`
+        features can be chosen to be perturbed to maximize the output (L0-norm constraint).
+
+    The method works by first calculating the maximum possible positive contribution
+    ("score") each feature could make to the output. It then greedily selects
+    the top `cardinality` candidate features with the highest scores and sums
+    their contributions. The final bound is the sum of the output at the nominal
+    center, the contribution from the "free" features, and the contribution from
+    the selected top-k "XAI" features.
+
+    Args:
+        x_min: Tensor defining the lower bounds of the L-infinity component of the domain.
+        x_max: Tensor defining the upper bounds of the L-infinity component of the domain.
+        x_center: Tensor for the nominal center of the perturbation domain.
+        w: Weight tensor of the linear layer.
+        b: Bias tensor of the linear layer.
+        mask_xai: A binary mask identifying features that are candidates for L0
+            perturbation.
+        mask_free: A binary mask identifying features that are always perturbed
+            under the L-infinity norm.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+        cardinality: The L0 norm budget. The maximum number of features from the
+            `xai_mask` pool to perturb. Can be an integer for the entire batch or
+            a list of integers for per-sample budgets.
+        **kwargs: Additional keyword arguments, used internally.
+
+    Returns:
+        A tensor representing the computed upper bound of the linear operation.
+    """
 
     missing_batchsize: bool = "missing_batchsize" in kwargs and kwargs["missing_batchsize"]
 
@@ -32,7 +68,9 @@ def get_upper_box_l0(
 
     # split into positive and negative components
     n_h: list[int] = len(w.shape[2:])  # output shape of the layer
-    n_in: int = int(w.shape[1] / channel)  # number of input features (without the channel dimension)
+    n_in: int = int(
+        w.shape[1] / channel
+    )  # number of input features (without the channel dimension)
 
     # assuming channels_first
     if data_format == "channels_first":
@@ -111,7 +149,7 @@ def get_upper_box_l0(
     # update bias with free indices !
     free_scoring_samples: Tensor = K.sum(scoring_samples * mask_free_out, 1)
 
-    bias = bias + free_scoring_samples    
+    bias = bias + free_scoring_samples
     return final_score + bias
 
 
@@ -128,6 +166,39 @@ def get_lower_box_l0(
     cardinality: Union[int, List[int]],
     **kwargs: Any,
 ) -> Tensor:
+    """Computes the lower bound of a linear operation over a hybrid L-infinity/L0 domain.
+
+    This function is the counterpart to `get_upper_box_l0`. It computes the tightest
+    possible lower bound for a linear operation (`w*x + b`) over the same complex
+    perturbation domain, which combines L-infinity and L0-norm constraints.
+
+    The implementation leverages the duality principle that the minimum of a function
+    is the negative of the maximum of its negative, i.e.,
+    $min(f(x)) = -max(-f(x))$.
+    It computes the lower bound by calling `get_upper_box_l0` with negated
+    weights (`-w`) and bias (`-b`) and then negating the result. This effectively
+    finds the perturbation that minimizes the linear function's output.
+
+    Args:
+        x_min: Tensor defining the lower bounds of the L-infinity component of the domain.
+        x_max: Tensor defining the upper bounds of the L-infinity component of the domain.
+        x_center: Tensor for the nominal center of the perturbation domain.
+        w: Weight tensor of the linear layer.
+        b: Bias tensor of the linear layer.
+        mask_xai: A binary mask identifying features that are set to their nominal value
+        mask_free: A binary mask identifying features that are always perturbed
+            under the L-infinity norm.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+        cardinality: The L0 norm budget. The maximum number of features from the
+            `xai_mask` pool to perturb. Can be an integer for the entire batch or
+            a list of integers for per-sample budgets.
+        **kwargs: Additional keyword arguments, passed to the underlying
+            `get_upper_box_l0` function.
+
+    Returns:
+        A tensor representing the computed lower bound of the linear operation.
+    """
     return -get_upper_box_l0(
         x_min=x_min,
         x_max=x_max,
@@ -142,27 +213,55 @@ def get_lower_box_l0(
         **kwargs,
     )
 
-def check_is_robust(model, 
-                    input_sample, 
-                    eps, 
-                    channel, 
-                    data_format, 
-                    n_class, 
-                    decomon_model=None):
-    
-    n_in_wo_channel:int = int(input_sample.shape[-1]/channel)
-    free_indices:list[int] = [i for i in range(n_in_wo_channel)]
-    
-    upper :np.array = get_abstract_output_domain(model=model,
-                                                input_sample=input_sample,
-                                                lower_bound=np.maximum(input_sample-eps, 0.),
-                                                upper_bound=np.minimum(input_sample+eps, 1.),
-                                                xai_indices=[],
-                                                free_indices=free_indices,
-                                                channel=channel,
-                                                data_format=data_format,
-                                                n_class=n_class,
-                                                decomon_model=decomon_model
-                                                ) # (1, n_out)
 
-    return np.max(upper)<=0
+def check_is_robust(
+    model, input_sample, eps, channel, data_format, n_class, decomon_model=None
+) -> bool:
+    """Checks the L-infinity robustness of a model for a given input and epsilon.
+
+    This function verifies whether the model's prediction for a given `input_sample`
+    remains constant within an $L_\infty$ ball of radius `eps`. The perturbation
+    space is clipped to the valid data range of [0, 1].
+
+    It uses abstract interpretation via the `get_abstract_output_domain` function
+    to compute a sound upper bound on the logit differences ($z_{gt} - z_{other}$)
+    over the entire input perturbation region, where $z_{gt}$ is the logit of the
+    predicted class for the original `input_sample`.
+
+    If the maximum of these upper bounds is less than or equal to zero, it
+    formally proves that the original prediction is robust for any input within
+    the specified $L_\infty$ ball.
+
+    Args:
+        model: The Keras model to verify.
+        input_sample: A single input point (e.g., an image) around which
+            robustness is checked.
+        eps: The radius (epsilon) of the $L_\infty$ norm perturbation.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+        n_class: The number of output classes of the model.
+        decomon_model: An optional, pre-compiled decomon model for improved
+            performance.
+
+    Returns:
+        `True` if the model is provably robust for the given input and
+        epsilon, `False` otherwise.
+    """
+
+    n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
+    free_indices: list[int] = [i for i in range(n_in_wo_channel)]
+
+    upper: np.array = get_abstract_output_domain(
+        model=model,
+        input_sample=input_sample,
+        lower_bound=np.maximum(input_sample - eps, 0.0),
+        upper_bound=np.minimum(input_sample + eps, 1.0),
+        xai_indices=[],
+        free_indices=free_indices,
+        channel=channel,
+        data_format=data_format,
+        n_class=n_class,
+        decomon_model=decomon_model,
+    )  # (1, n_out)
+
+    return np.max(upper) <= 0

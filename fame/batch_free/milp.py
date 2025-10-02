@@ -91,7 +91,7 @@ def get_milp(
             b=b[p],
             xai_indices=xai_indices,
             free_indices=free_indices,
-            cardinality=card_knapsack[p]-1,
+            cardinality=card_knapsack[p] - 1,
         )
         if len(coeff_k):
             abstract_free_set[k, np.array(coeff_k)] = 1

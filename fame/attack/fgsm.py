@@ -1,57 +1,77 @@
 """The Fast Gradient Method attack."""
+from typing import Callable
+
+import keras
 import numpy as np
 import torch
+from keras import KerasTensor as Tensor
 
 from .utils import optimize_linear
 
 
 def fast_gradient_method(
-    model_fn,
-    x,
-    eps,
-    norm,
-    loss_fn=None,
-    clip_min=None,
-    clip_max=None,
-    y=None,
-    targeted=False,
-    sanity_checks=False,
-):
+    model_fn: keras.models.Model,
+    x: Tensor,
+    eps: float,
+    norm: int,
+    loss_fn: Callable,
+    clip_min: Tensor = None,
+    clip_max: Tensor = None,
+    y: Tensor = None,
+    targeted: bool = False,
+    sanity_checks: bool = False,
+) -> Tensor:
+    """Creates adversarial examples using the Fast Gradient Sign Method (FGSM).
+
+    This function implements the FGSM attack, a single-step gradient-based method
+    for generating adversarial examples, as originally proposed by Goodfellow et al.
+    The attack works by taking a single step in the direction of the gradient of
+    the loss function with respect to the input data.
+
+    The perturbation is calculated to maximize the loss (for untargeted attacks)
+    or minimize it (for targeted attacks) within an $L_p$ ball of radius epsilon.
+
+    Reference:
+    Goodfellow, I. J., Shlens, J., & Szegedy, C. (2014).
+    Explaining and harnessing adversarial examples.
+    https://arxiv.org/abs/1412.6572
+    Code References: cleverhans
+
+
+    Args:
+        model_fn: A callable model function (e.g., a PyTorch Module) that takes
+            a tensor input and returns the model's logits.
+        x: The input tensor to be perturbed.
+        eps: The magnitude of the perturbation (epsilon), controlling the
+            attack strength within the specified norm.
+        norm: The norm order to use for the perturbation ($L_\infty$, $L_1$, or $L_2$).
+            Accepts `np.inf`, `1`, or `2`.
+        loss_fn: The loss function used to compute the gradient (e.g.,
+            `torch.nn.CrossEntropyLoss`).
+        clip_min: An optional tensor for the minimum value to which the
+            adversarial example will be clipped.
+        clip_max: An optional tensor for the maximum value to which the
+            adversarial example will be clipped.
+        y: The ground-truth or target labels. If `None`, the model's own
+            predictions on the clean input `x` are used.
+        targeted: If `True`, the attack is targeted and aims to misclassify the
+            input as the class specified in `y`. If `False` (default), the
+            attack is untargeted and aims to maximize the loss for the
+            correct class.
+        sanity_checks: If `True`, performs assertions to check that the input `x`
+            is within the `[clip_min, clip_max]` range.
+
+    Returns:
+        An adversarial tensor of the same shape as `x` that has been perturbed
+        to fool the model.
     """
-    PyTorch implementation of the Fast Gradient Method.
-    :param model_fn: a callable that takes an input tensor and returns the model logits.
-    :param x: input tensor.
-    :param eps: epsilon (input variation parameter); see https://arxiv.org/abs/1412.6572.
-    :param norm: Order of the norm (mimics NumPy). Possible values: np.inf, 1 or 2.
-    :param clip_min: (optional) float. Minimum float value for adversarial example components.
-    :param clip_max: (optional) float. Maximum float value for adversarial example components.
-    :param y: (optional) Tensor with true labels. If targeted is true, then provide the
-              target label. Otherwise, only provide this parameter if you'd like to use true
-              labels when crafting adversarial samples. Otherwise, model predictions are used
-              as labels to avoid the "label leaking" effect (explained in this paper:
-              https://arxiv.org/abs/1611.01236). Default is None.
-    :param targeted: (optional) bool. Is the attack targeted or untargeted?
-              Untargeted, the default, will try to make the label incorrect.
-              Targeted will instead try to move in the direction of being more like y.
-    :param sanity_checks: bool, if True, include asserts (Turn them off to use less runtime /
-              memory or for unit tests that intentionally pass strange input)
-    :return: a tensor for the adversarial example
-    """
+
     if norm not in [np.inf, 1, 2]:
         raise ValueError("Norm order must be either np.inf, 1, or 2, got {} instead.".format(norm))
     if eps < 0:
         raise ValueError("eps must be greater than or equal to 0, got {} instead".format(eps))
     if eps == 0:
         return x
-    """
-    if clip_min is not None and clip_max is not None:
-        if clip_min > clip_max:
-            raise ValueError(
-                "clip_min must be less than or equal to clip_max, got clip_min={} and clip_max={}".format(
-                    clip_min, clip_max
-                )
-            )
-    """
 
     asserts = []
 

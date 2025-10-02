@@ -20,6 +20,33 @@ def get_trivial(
     channel: int = 1,
     data_format: str = "channels_first",
 ):
+    """Calculates the normalized impact scores for features from an affine relaxation.
+
+    This helper function takes the affine parameters (`w_u`, `b_u`) of a network's
+    upper bound, obtained from abstract interpretation, and computes a normalized
+    impact score for each input feature.
+
+    This score represents the "efficiency" of a feature in worsening the robustness
+    bound, analogous to a value-to-weight ratio in knapsack problems. It is
+    calculated by determining the maximum possible influence of each feature on the
+    bound (`get_W`) and then normalizing it by the bias term (`b_trivial`).
+
+    Args:
+        w_u_trivial: The weights of the affine upper bound from a decomon model.
+        b_u_trivial: The bias of the affine upper bound from a decomon model.
+        box_trivial: The input domain tensor `[lower, upper, center]` that was used
+            for the abstract analysis.
+        xai_mask: A binary mask to exclude pre-defined XAI features from the
+            score calculation.
+        free_mask: A binary mask to exclude pre-defined free features from the
+            score calculation.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+
+    Returns:
+        A numpy array containing the normalized impact scores for each feature, which
+        can be used for ranking or greedy selection.
+    """
     # we could return all indices up to cardinalities
     # best is to return the highest one from the abstract domain (to facilitate freeing latter one)
 
@@ -52,6 +79,36 @@ def get_greedy_order(
     data_format: str = "channels_first",
     n_class: int = 10,
 ):
+    """Ranks input features by their impact on model robustness to get a greedy search order.
+
+    This function provides an ordered list of features, ranked from most to least
+    influential, for use in greedy search algorithms. A feature's influence is
+    determined by its potential to adversely affect the model's certified
+    robustness bounds, as measured by abstract interpretation.
+
+    The process is as follows:
+    1.  Perform an abstract analysis using `decomon` to obtain a sound affine
+        approximation (`w*x + b`) of the network's output bounds.
+    2.  Use this approximation to calculate a normalized impact score for each
+        feature via the `get_trivial` helper function.
+    3.  Sort the features in descending order based on these scores.
+
+    Args:
+        model: The Keras model to be analyzed.
+        input_sample: The nominal input point.
+        gt_label: The ground-truth class label.
+        lower_bound: The lower bounds of the L-infinity perturbation.
+        upper_bound: The upper bounds of the L-infinity perturbation.
+        xai_indices: A list of feature indices to be excluded from the ordering.
+        free_indices: A list of feature indices to be excluded from the ordering.
+        channel: The number of channels in the input data.
+        data_format: The data format, either "channels_first" or "channels_last".
+        n_class: The number of output classes of the model.
+
+    Returns:
+        A list of feature indices, sorted from most to least impactful, to be
+        used as a traversal order in greedy algorithms.
+    """
     # we should either find it is safe using abstract interpretation or not find any attacks
 
     n_in_with_channel: int = input_sample.shape[-1]

@@ -1,57 +1,82 @@
 """The Projected Gradient Descent attack."""
+from typing import Callable
+
+import keras
 import numpy as np
 import torch
+from keras import KerasTensor as Tensor
 
 from .fgsm import fast_gradient_method
-from .utils import clip_eta
+from .utils import clip_eta, optimize_linear
 
 
 def projected_gradient_descent(
-    model_fn,
-    x,
-    eps,
-    eps_iter,
-    nb_iter,
-    norm,
-    loss_fn=None,
-    clip_min=None,
-    clip_max=None,
-    y=None,
-    targeted=False,
-    rand_init=True,
-    rand_minmax=None,
-    sanity_checks=False,
-):
+    model_fn: keras.models.Model,
+    x: Tensor,
+    eps: float,
+    eps_iter: float,
+    nb_iter: int,
+    norm: int,
+    loss_fn: Callable,
+    clip_min: Tensor = None,
+    clip_max: Tensor = None,
+    y: Tensor = None,
+    targeted: bool = False,
+    rand_init: bool = True,
+    rand_minmax: float = None,
+    sanity_checks: bool = False,
+) -> tuple[Tensor, list[Tensor]]:
+    """Creates adversarial examples using Projected Gradient Descent (PGD).
+
+    This function implements the PGD attack, a strong, iterative method for
+    generating adversarial examples, as originally proposed by Madry et al.
+    PGD is essentially a multi-step version of FGSM.
+
+    The attack works by:
+    1. Optionally starting from a random point within the allowed perturbation space.
+    2. Iteratively taking small steps (using FGSM as the inner step) in the
+       direction that maximizes the loss.
+    3. After each step, projecting the total perturbation back onto the $L_p$
+       ball of radius `eps` to ensure the constraint is not violated.
+    4. Clipping the resulting example to a valid data range (e.g., [0, 1]).
+
+    Reference:
+    Madry, A., Makelov, A., Schmidt, L., Tsipras, D., & Vladu, A. (2017).
+    Towards deep learning models resistant to adversarial attacks.
+    https://arxiv.org/abs/1706.06083
+    Code: cleverhans
+
+    Args:
+        model_fn: A callable model function (e.g., a PyTorch Module) that takes
+            a tensor input and returns the model's logits.
+        x: The input tensor to be perturbed.
+        eps: The total perturbation budget (radius of the $L_p$ ball).
+        eps_iter: The step size for each attack iteration.
+        nb_iter: The number of attack iterations to perform.
+        norm: The norm order to use for the perturbation ($L_\infty$ or $L_2$).
+            Accepts `np.inf` or `2`.
+        loss_fn: The loss function used to compute the gradient.
+        clip_min: An optional tensor for the minimum value to which the
+            adversarial example will be clipped at each iteration.
+        clip_max: An optional tensor for the maximum value to which the
+            adversarial example will be clipped at each iteration.
+        y: The ground-truth or target labels. If `None`, the model's own
+            predictions on the clean input `x` are used.
+        targeted: If `True`, performs a targeted attack. If `False` (default),
+            the attack is untargeted.
+        rand_init: If `True`, starts the attack from a random point within the
+            epsilon ball, which can improve attack success.
+        rand_minmax: The range (`-rand_minmax` to `+rand_minmax`) for the
+            random initialization. Defaults to `eps`.
+        sanity_checks: If `True`, performs assertions on inputs.
+
+    Returns:
+        A tuple containing:
+        - `adv_x` (Tensor): The final adversarial example found after `nb_iter` steps.
+        - `x_hist` (List[Tensor]): A list of adversarial examples from each
+          iteration of the attack.
     """
-    This class implements either the Basic Iterative Method
-    (Kurakin et al. 2016) when rand_init is set to False. or the
-    Madry et al. (2017) method if rand_init is set to True.
-    Paper link (Kurakin et al. 2016): https://arxiv.org/pdf/1607.02533.pdf
-    Paper link (Madry et al. 2017): https://arxiv.org/pdf/1706.06083.pdf
-    :param model_fn: a callable that takes an input tensor and returns the model logits.
-    :param x: input tensor.
-    :param eps: epsilon (input variation parameter); see https://arxiv.org/abs/1412.6572.
-    :param eps_iter: step size for each attack iteration
-    :param nb_iter: Number of attack iterations.
-    :param norm: Order of the norm (mimics NumPy). Possible values: np.inf, 1 or 2.
-    :param clip_min: (optional) float. Minimum float value for adversarial example components.
-    :param clip_max: (optional) float. Maximum float value for adversarial example components.
-    :param y: (optional) Tensor with true labels. If targeted is true, then provide the
-              target label. Otherwise, only provide this parameter if you'd like to use true
-              labels when crafting adversarial samples. Otherwise, model predictions are used
-              as labels to avoid the "label leaking" effect (explained in this paper:
-              https://arxiv.org/abs/1611.01236). Default is None.
-    :param targeted: (optional) bool. Is the attack targeted or untargeted?
-              Untargeted, the default, will try to make the label incorrect.
-              Targeted will instead try to move in the direction of being more like y.
-    :param rand_init: (optional) bool. Whether to start the attack from a randomly perturbed x.
-    :param rand_minmax: (optional) bool. Support of the continuous uniform distribution from
-              which the random perturbation on x was drawn. Effective only when rand_init is
-              True. Default equals to eps.
-    :param sanity_checks: bool, if True, include asserts (Turn them off to use less runtime /
-              memory or for unit tests that intentionally pass strange input)
-    :return: a tensor for the adversarial example
-    """
+
     if norm == 1:
         raise NotImplementedError(
             "It's not clear that FGM is a good inner loop"
