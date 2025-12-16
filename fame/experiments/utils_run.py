@@ -148,7 +148,7 @@ def exp_A_2(
             free_indices = []
             start_time = time.time()
 
-            abstract_set = free_iteratively_k_features(
+            abstract_set, singleton_set = free_iteratively_k_features(
                 model=model,
                 gt_label=gt_label,
                 input_sample=input_sample,
@@ -163,6 +163,7 @@ def exp_A_2(
             )
             end_time = time.time()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
+            abstract_set = abstract_set + singleton_set
             array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
             # for each method compute the largest abstract free set
             xai_size = len(abstract_set)
@@ -233,7 +234,7 @@ def exp_A_2_no_overwrite(
             free_indices = []
             start_time = time.time()
 
-            abstract_set = free_iteratively_k_features(
+            abstract_set, singleton_set = free_iteratively_k_features(
                 model=model,
                 gt_label=gt_label,
                 input_sample=input_sample,
@@ -248,6 +249,7 @@ def exp_A_2_no_overwrite(
             )
             end_time = time.time()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
+            abstract_set = abstract_set + singleton_set
             array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
             # for each method compute the largest abstract free set
             xai_size = len(abstract_set)
