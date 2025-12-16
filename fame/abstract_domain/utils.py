@@ -256,7 +256,6 @@ def check_is_robust(
         input_sample=input_sample,
         lower_bound=np.maximum(input_sample - eps, 0.0),
         upper_bound=np.minimum(input_sample + eps, 1.0),
-        xai_indices=[],
         free_indices=free_indices,
         channel=channel,
         data_format=data_format,
