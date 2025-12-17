@@ -22,6 +22,8 @@ def find_closest_xai(
     data_format: int = "channels_first",
     n_class: int = 10,
     traversal_order: str = "greedy",
+    means = None, 
+    stddev = None
 ) -> tuple[list[int], list[int]]:
     """Identifies a minimal set of robust features required to prevent adversarial attacks.
 
@@ -70,8 +72,12 @@ def find_closest_xai(
 
     n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
 
-    lower_bound: np.ndarray = np.maximum(input_sample - eps, 0 * input_sample)
-    upper_bound: np.ndarray = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    if means is None and stddev is None:
+        lower_bound: np.ndarray = np.maximum(input_sample - eps, 0 * input_sample)
+        upper_bound: np.ndarray = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    else:
+        lower_bound = np.maximum(input_sample - eps, - (means/stddev))
+        upper_bound = np.minimum(input_sample + eps, ((1-means)/stddev))
 
     # start by attacking everything
     adv_pred_everything: np.array = attack(
@@ -82,6 +88,7 @@ def find_closest_xai(
         gt_label=gt_label,
         eps=eps,
         method=method,
+        device=device
     )  # (1,)
     if adv_pred_everything[0] == gt_label:
         print("no attacks could be find, skip the search")

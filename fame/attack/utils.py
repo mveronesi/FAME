@@ -106,6 +106,8 @@ def get_attacks_bounds(
     remaining_indices: list[int],
     channel: int = 1,
     data_format: str = "channels_first",
+    means = None, 
+    stddev = None
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Constructs a batch of input domains for testing the vulnerability of single features.
 
@@ -142,9 +144,13 @@ def get_attacks_bounds(
     n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
     batch_size = len(remaining_indices)
 
-    lower_bound_input_ = np.maximum(input_sample - eps, 0 * input_sample)
-    upper_bound_input_ = np.minimum(input_sample + eps, 0 * input_sample + 1)
-
+    if means is None and stddev is None:
+        lower_bound_input_ = np.maximum(input_sample - eps, 0 * input_sample)
+        upper_bound_input_ = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    else:
+        lower_bound_input_: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound_input_: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        
     # reshape according to data_format
     lower_bound_c: np.array
     upper_bound_c: np.array

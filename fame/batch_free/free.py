@@ -375,6 +375,8 @@ def free_iteratively_k_features(
     method: str = "greedy",
     refining_domain: bool = True,
     verbose: int = 0,
+    means=None, 
+    stddev=None
 ) -> tuple[list[int], list[int]]:
     """Iteratively finds the largest possible set of robust features for a given input.
 
@@ -417,8 +419,13 @@ def free_iteratively_k_features(
     """
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
-    lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
-    upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+
+    if means is None and stddev is None:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+    else:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
 
     cardinality: np.ndarray = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
     abstract_set = np.zeros((1,))  # temporary
@@ -462,8 +469,12 @@ def free_iteratively_k_features(
                 )
 
             # overwrite the bounds in case they have been corrupted
-            lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-            upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            if means is None and stddev is None:
+                lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+                upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            else:
+                lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+                upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
 
             abstract_set = free_at_once_k_features(
                 model=model,
@@ -485,8 +496,13 @@ def free_iteratively_k_features(
     # while we find one singleton (we add the one with the least impact according to abstract bound)
     # finish with singleton search
     decomon_singleton = get_abstract_model_singleton(model=model, n_class=n_class)
-    lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-    upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    if means is None and stddev is None:
+        lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+        upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    else:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        
     singleton_free_index: list
     singleton_free_index = free_with_binary_search(
         model=model,
