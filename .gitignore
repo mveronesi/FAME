@@ -1,3 +1,14 @@
 *.png
 notebooks/*.png
 */__pycache__/
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+env/
+venv/
+.env
+.pytest_cache/
+.ipynb_checkpoints/
+*.csv
+*.log

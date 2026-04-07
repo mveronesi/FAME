@@ -25,6 +25,8 @@ def find_closest_xai_with_dichotomy(
     data_format: int = "channels_first",
     n_class: int = 10,
     traversal_order: str = "greedy",
+    means = None, 
+    stddev = None
 ) -> tuple[list[int], list[int]]:
     """Finds a robust feature set using a recursive divide-and-conquer algorithm.
 
@@ -76,8 +78,12 @@ def find_closest_xai_with_dichotomy(
         assert len(xai_indices + free_indices) == n_in_wo_channel, "missing input features"
         return xai_indices, free_indices
 
-    lower_bound: np.ndarray = np.maximum(input_sample - eps, 0 * input_sample)
-    upper_bound: np.ndarray = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    if means is None and stddev is None:
+        lower_bound: np.ndarray = np.maximum(input_sample - eps, 0 * input_sample)
+        upper_bound: np.ndarray = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    else:
+        lower_bound: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
 
     # start by attacking everything except xai_indices
     input_sample_everything, lower_bound_everything, upper_bound_everything = get_attacks_bounds(
@@ -96,6 +102,7 @@ def find_closest_xai_with_dichotomy(
         gt_label=gt_label,
         eps=eps,
         method=method,
+        device=device
     )  # (1,)
     if adv_pred_everything[0] == gt_label:
         return xai_indices, free_indices + remaining_indices

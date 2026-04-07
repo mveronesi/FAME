@@ -66,6 +66,7 @@ def get_abstract_output_domain_singleton(
     data_format: str = "channels_first",
     n_class: int = 10,
     decomon_model: keras.models.Model = None,
+    batch_size: int =25,
 ) -> np.ndarray:
     """Computes the certified output bounds when perturbing single features one by one.
 
@@ -129,15 +130,18 @@ def get_abstract_output_domain_singleton(
         lower_bound_c: np.ndarray = np.reshape(lower_bound, (n_in_wo_channel, channel))
         upper_bound_c: np.ndarray = np.reshape(upper_bound, (n_in_wo_channel, channel))
 
-    batch_size: int
+    max_batch_size: int
     if remaining_indices is None:
         # consider every remaining dimensions
-        batch_size = (
+        max_batch_size = (
             n_in_wo_channel - len(xai_indices) - len(free_indices)
         )  # number of remaining indices
     else:
         # remaining_indices has been set previously by the pipeline
-        batch_size = len(remaining_indices)
+        max_batch_size = len(remaining_indices)
+
+    if (batch_size < 0) or (batch_size > max_batch_size):
+        batch_size = max_batch_size
 
     gt_label: int = model.predict(input_sample[None], verbose=0).argmax(-1)[0]
 
@@ -159,14 +163,6 @@ def get_abstract_output_domain_singleton(
             ]  # open the free dimension
             upper_bound_np[free_indices, :] = upper_bound_c[free_indices, :]
 
-    # repeat
-    lower_bound_batch: np.ndarray = np.repeat(
-        lower_bound_np[None], repeats=batch_size, axis=0
-    )  # (batch_size, channel, n_in_wo_channel)
-    upper_bound_batch: np.ndarray = np.repeat(
-        upper_bound_np[None], repeats=batch_size, axis=0
-    )  # (batch_size, channel, n_in_wo_channel)
-
     # expand one dimension in the set of remaining features
     if remaining_indices is None:
         remaining_indices = [
@@ -174,49 +170,64 @@ def get_abstract_output_domain_singleton(
         ]
 
     assert (
-        len(remaining_indices) == batch_size
+        len(remaining_indices) == max_batch_size
     ), "Value Error remaining indices length should match batch_size"
 
-    for i, j in enumerate(remaining_indices):
-        if data_format == "channels_first":
-            lower_bound_batch[i, :, j] = lower_bound_c[:, j]
-            upper_bound_batch[i, :, j] = upper_bound_c[:, j]
-        else:
-            try:
-                lower_bound_batch[i, j, :] = lower_bound_c[j, :]
-                upper_bound_batch[i, j, :] = upper_bound_c[j, :]
-            except:
-                import pdb
+    all_upper = []
+    for k in range(0, max_batch_size, batch_size):
+        # repeat
+        k_stop = min(k + batch_size, max_batch_size)
+        current_batch_size = k_stop - k
+        lower_bound_batch: np.ndarray = np.repeat(
+            lower_bound_np[None], repeats=current_batch_size, axis=0
+        )  # (batch_size, channel, n_in_wo_channel)
+        upper_bound_batch: np.ndarray = np.repeat(
+            upper_bound_np[None], repeats=current_batch_size, axis=0
+        )  # (batch_size, channel, n_in_wo_channel)
 
-                pdb.set_trace()
 
-    # flatten lower_bound_batch and upper_bound_batch
-    lower_bound_batch = np.reshape(
-        lower_bound_batch, (-1, 1, n_in_with_channel)
-    )  # (batch_size, 1, n_in_with_channel)
-    upper_bound_batch = np.reshape(
-        upper_bound_batch, (-1, 1, n_in_with_channel)
-    )  # (batch_size, 1, n_in_with_channel)
-    box: np.ndarray = np.concatenate(
-        [lower_bound_batch, upper_bound_batch], 1
-    )  # (batch_size, 2, n_in_with_channel)
+        for i, j in enumerate(remaining_indices[k:k_stop]):
+            if data_format == "channels_first":
+                lower_bound_batch[i, :, j] = lower_bound_c[:, j]
+                upper_bound_batch[i, :, j] = upper_bound_c[:, j]
+            else:
+                try:
+                    lower_bound_batch[i, j, :] = lower_bound_c[j, :]
+                    upper_bound_batch[i, j, :] = upper_bound_c[j, :]
+                except:
+                    import pdb
 
-    # build your input domain
-    # encode matrix C
-    C_gt: np.ndarray = np.repeat(
-        encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=batch_size, axis=0
-    )
-    # (batch_size, n_class, n_class-1)
+                    pdb.set_trace()
 
-    if decomon_model is None:
-        C: Tensor = Input((n_class, n_class - 1))
+        # flatten lower_bound_batch and upper_bound_batch
+        lower_bound_batch = np.reshape(
+            lower_bound_batch, (-1, 1, n_in_with_channel)
+        )  # (batch_size, 1, n_in_with_channel)
+        upper_bound_batch = np.reshape(
+            upper_bound_batch, (-1, 1, n_in_with_channel)
+        )  # (batch_size, 1, n_in_with_channel)
+        box: np.ndarray = np.concatenate(
+            [lower_bound_batch, upper_bound_batch], 1
+        )  # (batch_size, 2, n_in_with_channel)
 
-        decomon_model: keras.model.Model = clone(
-            model, final_affine=False, final_ibp=True, final_lower=False, backward_bounds=[C]
-        )  # return only upper bound
+        # build your input domain
+        # encode matrix C
+        C_gt: np.ndarray = np.repeat(
+            encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=current_batch_size, axis=0
+        )
+        # (batch_size, n_class, n_class-1)
 
-    upper: np.ndarray = decomon_model.predict([box, C_gt], verbose=0)
+        if decomon_model is None:
+            C: Tensor = Input((n_class, n_class - 1))
 
+            decomon_model: keras.model.Model = clone(
+                model, final_affine=False, final_ibp=True, final_lower=False, backward_bounds=[C]
+            )  # return only upper bound
+
+        upper: np.ndarray = decomon_model.predict([box, C_gt], verbose=0)
+        all_upper.append(upper)
+
+    upper = np.concatenate(all_upper, axis=0)
     return upper
 
 

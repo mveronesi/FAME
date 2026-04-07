@@ -30,6 +30,7 @@ def get_features_batch(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
+    batch_size: int = 25,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Performs a batched abstract interpretation pass over a hybrid L-inf/L0 domain.
 
@@ -68,53 +69,70 @@ def get_features_batch(
 
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
-    batch_size: int = len(cardinality)
+    if (batch_size < 0) or (batch_size > len(cardinality)):
+        batch_size = len(cardinality)
+    all_w_u = []
+    all_b_u = []
+    all_upper = []
+    all_box = []
 
-    # lower_bound/upper_bound/input_sample.shape = (n_in,)
-    lower_bound_batch: np.ndarray = np.repeat(
-        np.copy(lower_bound_input[None]) + 0.0, repeats=batch_size, axis=0
-    )  # (batch_size, n_in_with_channel)
-    upper_bound_batch: np.ndarray = np.repeat(
-        np.copy(upper_bound_input[None]) + 0.0, repeats=batch_size, axis=0
-    )  # (batch_size, n_in_with_channel)
-    input_sample_batch: np.ndarray = np.repeat(
-        np.copy(input_sample[None] + 0.0), repeats=batch_size, axis=0
-    )  # (batch_size, n_in_with_channel)
+    for k in range(0, len(cardinality), batch_size):
+        k_stop = min(k+batch_size, len(cardinality))
+        current_batch_size = k_stop - k
+        # lower_bound/upper_bound/input_sample.shape = (n_in,)
+        lower_bound_batch: np.ndarray = np.repeat(
+            np.copy(lower_bound_input[None]) + 0.0, repeats=current_batch_size, axis=0
+        )  # (batch_size, n_in_with_channel)
+        upper_bound_batch: np.ndarray = np.repeat(
+            np.copy(upper_bound_input[None]) + 0.0, repeats=current_batch_size, axis=0
+        )  # (batch_size, n_in_with_channel)
+        input_sample_batch: np.ndarray = np.repeat(
+            np.copy(input_sample[None] + 0.0), repeats=current_batch_size, axis=0
+        )  # (batch_size, n_in_with_channel)
 
-    # step 1: build your PerturbationDomain
-    xai_perturbation_domain: PerturbationDomain = XAIDomain(
-        xai_indices=xai_indices,
-        free_indices=free_indices,
-        cardinalities=cardinality,
-        n_dim=n_in_wo_channel,
-        channel=channel,
-        data_format=data_format,
-    )
-    box: np.ndarray = np.concatenate(
-        [lower_bound_batch[:, None], upper_bound_batch[:, None], input_sample_batch[:, None]], 1
-    )  # (batch_size, 3, n_in_with_channel)
+        # step 1: build your PerturbationDomain
+        xai_perturbation_domain: PerturbationDomain = XAIDomain(
+            xai_indices=xai_indices,
+            free_indices=free_indices,
+            cardinalities=cardinality[k:k_stop],
+            n_dim=n_in_wo_channel,
+            channel=channel,
+            data_format=data_format,
+        )
+        box: np.ndarray = np.concatenate(
+            [lower_bound_batch[:, None], upper_bound_batch[:, None], input_sample_batch[:, None]], 1
+        )  # (batch_size, 3, n_in_with_channel)
 
-    # build your input domain
-    # encode matrix C
-    C: Tensor = Input((n_class, n_class - 1))
-    C_gt: np.ndarray = np.repeat(
-        encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=batch_size, axis=0
-    )  # (batch_size, n_class, n_class-1)
+        # build your input domain
+        # encode matrix C
+        C: Tensor = Input((n_class, n_class - 1))
+        C_gt: np.ndarray = np.repeat(
+            encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=current_batch_size, axis=0
+        )  # (batch_size, n_class, n_class-1)
 
-    decomon_model: keras.model.Model = clone(
-        model,
-        perturbation_domain=xai_perturbation_domain,
-        final_affine=True,
-        final_ibp=True,
-        final_lower=False,
-        backward_bounds=[C],
-    )  # return only upper bound
+        decomon_model: keras.model.Model = clone(
+            model,
+            perturbation_domain=xai_perturbation_domain,
+            final_affine=True,
+            final_ibp=True,
+            final_lower=False,
+            backward_bounds=[C],
+        )  # return only upper bound
 
-    w_u: np.ndarray
-    b_u: np.ndarray
-    upper: np.ndarray
-    w_u, b_u, upper = decomon_model.predict([box, C_gt], verbose=0, batch_size=len(box))
-
+        w_u: np.ndarray
+        b_u: np.ndarray
+        upper: np.ndarray
+        #w_u, b_u, upper = decomon_model.predict([box[0:10], C_gt[0:10]], verbose=0, batch_size=10)
+        w_u, b_u, upper = decomon_model.predict([box, C_gt], verbose=0, batch_size=len(box))
+        all_w_u.append(w_u)
+        all_b_u.append(b_u)
+        all_upper.append(upper)
+        all_box.append(box)
+        #print(w_u.shape, b_u.shape, upper.shape)
+    w_u = np.concatenate(all_w_u, axis=0)
+    b_u = np.concatenate(all_b_u, axis=0)
+    upper = np.concatenate(all_upper, axis=0)
+    box = np.concatenate(all_box, axis=0)
     return w_u, b_u, upper, box
 
 
@@ -357,6 +375,8 @@ def free_iteratively_k_features(
     method: str = "greedy",
     refining_domain: bool = True,
     verbose: int = 0,
+    means=None, 
+    stddev=None
 ) -> tuple[list[int], list[int]]:
     """Iteratively finds the largest possible set of robust features for a given input.
 
@@ -399,8 +419,13 @@ def free_iteratively_k_features(
     """
     n_in_with_channel: int = input_sample.shape[-1]
     n_in_wo_channel: int = int(n_in_with_channel / channel)
-    lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
-    upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+
+    if means is None and stddev is None:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+    else:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
 
     cardinality: np.ndarray = np.array([i for i in range(1, n_in_wo_channel - len(free_indices))])
     abstract_set = np.zeros((1,))  # temporary
@@ -444,8 +469,12 @@ def free_iteratively_k_features(
                 )
 
             # overwrite the bounds in case they have been corrupted
-            lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-            upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            if means is None and stddev is None:
+                lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+                upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            else:
+                lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+                upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
 
             abstract_set = free_at_once_k_features(
                 model=model,
@@ -467,8 +496,13 @@ def free_iteratively_k_features(
     # while we find one singleton (we add the one with the least impact according to abstract bound)
     # finish with singleton search
     decomon_singleton = get_abstract_model_singleton(model=model, n_class=n_class)
-    lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-    upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    if means is None and stddev is None:
+        lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+        upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+    else:
+        lower_bound_input: np.ndarray = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+        upper_bound_input: np.ndarray = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        
     singleton_free_index: list
     singleton_free_index = free_with_binary_search(
         model=model,

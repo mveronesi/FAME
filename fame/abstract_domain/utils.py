@@ -215,7 +215,7 @@ def get_lower_box_l0(
 
 
 def check_is_robust(
-    model, input_sample, eps, channel, data_format, n_class, decomon_model=None
+    model, input_sample, eps, channel, data_format, n_class, decomon_model=None, means=None, stddev=None
 ) -> bool:
     """Checks the L-infinity robustness of a model for a given input and epsilon.
 
@@ -251,11 +251,18 @@ def check_is_robust(
     n_in_wo_channel: int = int(input_sample.shape[-1] / channel)
     free_indices: list[int] = [i for i in range(n_in_wo_channel)]
 
+    if means is None and stddev is None:
+        lower_bound = np.maximum(input_sample - eps, 0.0)
+        upper_bound = np.minimum(input_sample + eps, 1.0)
+    else:
+        lower_bound = np.maximum(input_sample - eps, - (means/stddev))
+        upper_bound = np.minimum(input_sample + eps, ((1-means)/stddev) )
+        
     upper: np.array = get_abstract_output_domain(
         model=model,
         input_sample=input_sample,
-        lower_bound=np.maximum(input_sample - eps, 0.0),
-        upper_bound=np.minimum(input_sample + eps, 1.0),
+        lower_bound=lower_bound,
+        upper_bound=upper_bound,
         free_indices=free_indices,
         channel=channel,
         data_format=data_format,
