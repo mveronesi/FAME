@@ -24,6 +24,8 @@ def exp_A_1(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    means=None, 
+    stddev=None
 ):
     start_time: float
     end_time: float
@@ -57,8 +59,13 @@ def exp_A_1(
             # define input sample and local robustness region
             input_sample = x_test[index]
             gt_label = y_test[index]
-            lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-            upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            
+            if means is None and stddev is None:
+                lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+                upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+            else:
+                lower_bound_input = np.maximum(input_sample - eps, - (means/stddev))
+                upper_bound_input = np.minimum(input_sample + eps, ((1-means)/stddev))
             start_time = time.time()
             abstract_set = free_at_once_k_features(
                 model=model,
@@ -112,6 +119,8 @@ def exp_A_2(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    means = None, 
+    stddev = None
 ):
     start_time: float
     end_time: float
@@ -148,7 +157,7 @@ def exp_A_2(
             free_indices = []
             start_time = time.time()
 
-            abstract_set = free_iteratively_k_features(
+            abstract_set, singleton_set = free_iteratively_k_features(
                 model=model,
                 gt_label=gt_label,
                 input_sample=input_sample,
@@ -160,9 +169,12 @@ def exp_A_2(
                 n_class=n_class,
                 method=method,
                 verbose=int(verbose > 1),
+                means=means, 
+                stddev=stddev
             )
             end_time = time.time()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
+            abstract_set = abstract_set + singleton_set
             array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
             # for each method compute the largest abstract free set
             xai_size = len(abstract_set)
@@ -197,6 +209,8 @@ def exp_A_2_no_overwrite(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    means=None, 
+    stddev=None
 ):
     start_time: float
     end_time: float
@@ -233,7 +247,7 @@ def exp_A_2_no_overwrite(
             free_indices = []
             start_time = time.time()
 
-            abstract_set = free_iteratively_k_features(
+            abstract_set, singleton_set = free_iteratively_k_features(
                 model=model,
                 gt_label=gt_label,
                 input_sample=input_sample,
@@ -245,9 +259,12 @@ def exp_A_2_no_overwrite(
                 n_class=n_class,
                 method=method,
                 verbose=int(verbose > 1),
+                means=means, 
+                stddev=stddev
             )
             end_time = time.time()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
+            abstract_set = abstract_set + singleton_set
             array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
             # for each method compute the largest abstract free set
             xai_size = len(abstract_set)
@@ -289,6 +306,8 @@ def exp_B_no_overwrite(
     device="mps",
     n_class: int = 10,
     verbose: int = 0,
+    means=None, 
+    stddev=None
 ):
     start_time: float
     end_time: float
@@ -335,6 +354,8 @@ def exp_B_no_overwrite(
             n_class=n_class,
             method=method,
             verbose=int(verbose > 1),
+            means=means, 
+            stddev=stddev
         )
 
         end_time_free = time.time()
@@ -383,7 +404,6 @@ def exp_B_no_overwrite(
             df_before = pd.read_csv("{}/{}.csv".format(dataframe_repository, dataframe_filename))
             df = pd.concat([df_before, df_row], ignore_index=True)
         else:
-            # import pdb; pdb.set_trace()
             df = pd.DataFrame(dico)
         df.to_csv("{}/{}.csv".format(dataframe_repository, dataframe_filename), index=False)
 
@@ -405,6 +425,8 @@ def exp_C_no_overwrite(
     device="mps",
     n_class: int = 10,
     verbose: int = 0,
+    means=None, 
+    stddev=None
 ):
     start_time: float
     end_time: float
@@ -451,6 +473,8 @@ def exp_C_no_overwrite(
             method=method,
             refining_domain=False, # use only binary search like Verix
             verbose=int(verbose > 1),
+            means=means, 
+            stddev=stddev
         )
 
         assert len(free_indices_cardinality)==0, "cardinality refininement should be off"

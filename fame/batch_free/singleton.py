@@ -166,7 +166,7 @@ def free_with_binary_search(
             input_sample=input_sample,
             lower_bound=lower_bound,
             upper_bound=upper_bound,
-            xai_indices=xai_indices,
+            #xai_indices=xai_indices,
             free_indices=free_indices + traversal_order_indices,
             channel=channel,
             data_format=data_format,
