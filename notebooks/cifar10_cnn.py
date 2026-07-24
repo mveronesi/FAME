@@ -37,6 +37,9 @@ from configs.cifar10_configs import get_dataset, dataset_to_numpy, means_np, std
 def main(args: Namespace):
     DATASET = "CIFAR10"
     MODEL = "cnn"
+    method = args.method.lower()
+    if method not in {"milp", "greedy"}:
+        raise ValueError("--method must be either 'milp' or 'greedy'")
 
     means_avg = np.mean(means_np)
     std_avg = np.mean(stddevs_np)
@@ -49,6 +52,7 @@ def main(args: Namespace):
     n_class = 10
     
     print("norm:", norm)
+    print("method:", method)
 
     """
     download and process CIFAR10 data.
@@ -94,7 +98,7 @@ def main(args: Namespace):
     os.makedirs(dataframe_repository, exist_ok =True)
 
     EXP = "A_2"
-    filename = "{}_{}_{}".format(DATASET, MODEL, EXP)
+    filename = "{}_{}_{}_{}".format(DATASET, MODEL, EXP, method)
     dataframe_filename_A2 = filename
 
     failing_indexes_a2 = []
@@ -117,6 +121,7 @@ def main(args: Namespace):
                 means=means_avg,
                 stddev=std_avg,
                 norm=norm,
+                method=method,
             )
         except Exception as ex:
             print("exception: ", ex)
@@ -151,5 +156,6 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--eps", required=True, type=int, help="Perturbation size for adversarial attacks (input value is divided by 255, the max pixel value).")
     parser.add_argument("--norm", required=False, type=float, default=2, help="Norm type for adversarial attacks (default: 2).")
+    parser.add_argument("--method", required=False, type=str, default="greedy", help="Search method for experiment A (milp or greedy).")
     args = parser.parse_args()
     main(args)

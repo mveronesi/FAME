@@ -7,6 +7,13 @@ import numpy as np
 import pandas as pd
 from fame import find_closest_xai, free_at_once_k_features, free_iteratively_k_features
 
+
+def _validate_method(method: str) -> str:
+    method = method.lower()
+    if method not in {"milp", "greedy"}:
+        raise ValueError("method must be either 'milp' or 'greedy'")
+    return method
+
 ## Experiment A: MILP versus Greedy
 
 
@@ -24,6 +31,7 @@ def exp_A_1(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    method: str = "greedy",
     norm=2,
     means=None, 
     stddev=None
@@ -31,15 +39,15 @@ def exp_A_1(
     start_time: float
     end_time: float
 
+    method = _validate_method(method)
+
     # create dico structure for the pandas dataframe
     dico = dict()
     dico["index"] = []
     dico["label"] = []
-    dico["milp_size"] = []
-    dico["milp_time"] = []
-    dico["greedy_size"] = []
-    dico["greedy_time"] = []
-    dico["greedy_2_milp"] = []
+    dico["method"] = []
+    dico["{}_size".format(method)] = []
+    dico["{}_time".format(method)] = []
 
     n_in_wo_channel = int(x_test.shape[-1] / channel)
     xai_indices = []
@@ -50,55 +58,48 @@ def exp_A_1(
         if verbose:
             print("ongoing index", index)
 
-        array_greedy_2_milp = np.zeros_like(cardinality)
-        abstract_domain_time = []  # average over milp and greedy
+        time.sleep(sleep_time)
+        gc.collect()
 
-        for coeff, method in zip([1, -1], ["milp", "greedy"]):
-            time.sleep(sleep_time)
-            gc.collect()
+        # define input sample and local robustness region
+        input_sample = x_test[index]
+        gt_label = y_test[index]
 
-            # define input sample and local robustness region
-            input_sample = x_test[index]
-            gt_label = y_test[index]
-            
-            if means is None and stddev is None:
-                lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
-                upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
-            else:
-                lower_bound_input = np.maximum(input_sample - eps, - (means/stddev))
-                upper_bound_input = np.minimum(input_sample + eps, ((1-means)/stddev))
-            start_time = time.time()
-            abstract_set = free_at_once_k_features(
-                model=model,
-                gt_label=gt_label,
-                input_sample=input_sample,
-                lower_bound_input=lower_bound_input,
-                upper_bound_input=upper_bound_input,
-                xai_indices=xai_indices,
-                free_indices=free_indices,
-                cardinality=cardinality,
-                channel=channel,
-                data_format=data_format,
-                n_class=n_class,
-                method=method,
-                verbose=int(verbose > 1),
-                norm=norm,
-            )
-            end_time = time.time()
-            # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
-            array_greedy_2_milp = array_greedy_2_milp + coeff * abstract_set.sum(-1)
-            # for each method compute the largest abstract free set
-            xai_size = np.max(abstract_set.sum(-1))
-            running_time = end_time - start_time
-            if verbose:
-                print("{} time".format(method), running_time)
+        if means is None or stddev is None:
+            lower_bound_input = np.maximum(input_sample - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(input_sample + eps, 0 * input_sample + 1)
+        else:
+            lower_bound_input = np.maximum(input_sample - eps, - (means/stddev))
+            upper_bound_input = np.minimum(input_sample + eps, ((1-means)/stddev))
+        start_time = time.time()
+        abstract_set = free_at_once_k_features(
+            model=model,
+            gt_label=gt_label,
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            xai_indices=xai_indices,
+            free_indices=free_indices,
+            cardinality=cardinality,
+            channel=channel,
+            data_format=data_format,
+            n_class=n_class,
+            method=method,
+            verbose=int(verbose > 1),
+            norm=norm,
+        )
+        end_time = time.time()
+        xai_size = np.max(abstract_set.sum(-1))
+        running_time = end_time - start_time
+        if verbose:
+            print("{} time".format(method), running_time)
 
-            dico["{}_size".format(method)].append(xai_size)
-            dico["{}_time".format(method)].append(running_time)
-        # add abstract domain average running time and distance between milp and greedy
+        dico["method"].append(method)
+        dico["{}_size".format(method)].append(xai_size)
+        dico["{}_time".format(method)].append(running_time)
+
         dico["index"].append(index)
         dico["label"].append(gt_label)
-        dico["greedy_2_milp"].append(np.max(array_greedy_2_milp))
 
         # record at every sample
         # Create the DataFrame
@@ -121,6 +122,7 @@ def exp_A_2(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    method: str = "greedy",
     norm = 2,
     means = None, 
     stddev = None
@@ -130,15 +132,15 @@ def exp_A_2(
     array_greedy_2_milp: np.ndarray
     abstract_set: list[int]
 
+    method = _validate_method(method)
+
     # create dico structure for the pandas dataframe
     dico = dict()
     dico["index"] = []
     dico["label"] = []
-    dico["milp_size"] = []
-    dico["milp_time"] = []
-    dico["greedy_size"] = []
-    dico["greedy_time"] = []
-    dico["greedy_2_milp"] = []
+    dico["method"] = []
+    dico["{}_size".format(method)] = []
+    dico["{}_time".format(method)] = []
 
     n_in_wo_channel = int(x_test.shape[-1] / channel)
 
@@ -147,51 +149,45 @@ def exp_A_2(
             print("ongoing index", index)
         cardinality = np.array([i for i in range(1, n_in_wo_channel)])
 
-        array_greedy_2_milp = np.zeros_like(cardinality)
+        time.sleep(sleep_time)
+        gc.collect()
 
-        for coeff, method in zip([1, -1], ["milp", "greedy"]):
-            time.sleep(sleep_time)
-            gc.collect()
+        # define input sample and local robustness region
+        input_sample = np.copy(x_test[index] + 0.0)
+        gt_label = np.copy(y_test[index] + 0)
+        xai_indices = []
+        free_indices = []
+        start_time = time.time()
 
-            # define input sample and local robustness region
-            input_sample = np.copy(x_test[index] + 0.0)
-            gt_label = np.copy(y_test[index] + 0)
-            xai_indices = []
-            free_indices = []
-            start_time = time.time()
+        abstract_set, singleton_set = free_iteratively_k_features(
+            model=model,
+            gt_label=gt_label,
+            input_sample=input_sample,
+            eps=eps,
+            xai_indices=xai_indices,
+            free_indices=free_indices,
+            channel=channel,
+            data_format=data_format,
+            n_class=n_class,
+            method=method,
+            verbose=int(verbose > 1),
+            norm=norm,
+            means=means,
+            stddev=stddev
+        )
+        end_time = time.time()
+        abstract_set = abstract_set + singleton_set
+        xai_size = len(abstract_set)
+        running_time = end_time - start_time
+        if verbose:
+            print("{} time".format(method), running_time)
 
-            abstract_set, singleton_set = free_iteratively_k_features(
-                model=model,
-                gt_label=gt_label,
-                input_sample=input_sample,
-                eps=eps,
-                xai_indices=xai_indices,
-                free_indices=free_indices,
-                channel=channel,
-                data_format=data_format,
-                n_class=n_class,
-                method=method,
-                verbose=int(verbose > 1),
-                norm=norm,
-                means=means, 
-                stddev=stddev
-            )
-            end_time = time.time()
-            # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
-            abstract_set = abstract_set + singleton_set
-            array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
-            # for each method compute the largest abstract free set
-            xai_size = len(abstract_set)
-            running_time = end_time - start_time
-            if verbose:
-                print("{} time".format(method), running_time)
+        dico["method"].append(method)
+        dico["{}_size".format(method)].append(xai_size)
+        dico["{}_time".format(method)].append(running_time)
 
-            dico["{}_size".format(method)].append(xai_size)
-            dico["{}_time".format(method)].append(running_time)
-        # add abstract domain average running time and distance between milp and greedy
         dico["index"].append(index)
         dico["label"].append(gt_label)
-        dico["greedy_2_milp"].append(np.max(array_greedy_2_milp))
 
         # record at every sample
         # Create the DataFrame
@@ -213,6 +209,7 @@ def exp_A_2_no_overwrite(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    method: str = "greedy",
     norm=2,
     means=None, 
     stddev=None
@@ -222,15 +219,15 @@ def exp_A_2_no_overwrite(
     array_greedy_2_milp: np.ndarray
     abstract_set: list[int]
 
+    method = _validate_method(method)
+
     # create dico structure for the pandas dataframe
     dico = dict()
     dico["index"] = []
     dico["label"] = []
-    dico["milp_size"] = []
-    dico["milp_time"] = []
-    dico["greedy_size"] = []
-    dico["greedy_time"] = []
-    dico["greedy_2_milp"] = []
+    dico["method"] = []
+    dico["{}_size".format(method)] = []
+    dico["{}_time".format(method)] = []
 
     n_in_wo_channel = int(x_test.shape[-1] / channel)
 
@@ -239,51 +236,45 @@ def exp_A_2_no_overwrite(
             print("ongoing index", index)
         cardinality = np.array([i for i in range(1, n_in_wo_channel)])
 
-        array_greedy_2_milp = np.zeros_like(cardinality)
+        time.sleep(sleep_time)
+        gc.collect()
 
-        for coeff, method in zip([1, -1], ["milp", "greedy"]):
-            time.sleep(sleep_time)
-            gc.collect()
+        # define input sample and local robustness region
+        input_sample = np.copy(x_test[index] + 0.0)
+        gt_label = np.copy(y_test[index] + 0)
+        xai_indices = []
+        free_indices = []
+        start_time = time.time()
 
-            # define input sample and local robustness region
-            input_sample = np.copy(x_test[index] + 0.0)
-            gt_label = np.copy(y_test[index] + 0)
-            xai_indices = []
-            free_indices = []
-            start_time = time.time()
+        abstract_set, singleton_set = free_iteratively_k_features(
+            model=model,
+            gt_label=gt_label,
+            input_sample=input_sample,
+            eps=eps,
+            xai_indices=xai_indices,
+            free_indices=free_indices,
+            channel=channel,
+            data_format=data_format,
+            n_class=n_class,
+            method=method,
+            verbose=int(verbose > 1),
+            norm=norm,
+            means=means,
+            stddev=stddev
+        )
+        end_time = time.time()
+        abstract_set = abstract_set + singleton_set
+        xai_size = len(abstract_set)
+        running_time = end_time - start_time
+        if verbose:
+            print("{} time".format(method), running_time)
 
-            abstract_set, singleton_set = free_iteratively_k_features(
-                model=model,
-                gt_label=gt_label,
-                input_sample=input_sample,
-                eps=eps,
-                xai_indices=xai_indices,
-                free_indices=free_indices,
-                channel=channel,
-                data_format=data_format,
-                n_class=n_class,
-                method=method,
-                verbose=int(verbose > 1),
-                norm=norm,
-                means=means, 
-                stddev=stddev
-            )
-            end_time = time.time()
-            # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
-            abstract_set = abstract_set + singleton_set
-            array_greedy_2_milp = array_greedy_2_milp + coeff * len(abstract_set)
-            # for each method compute the largest abstract free set
-            xai_size = len(abstract_set)
-            running_time = end_time - start_time
-            if verbose:
-                print("{} time".format(method), running_time)
+        dico["method"].append(method)
+        dico["{}_size".format(method)].append(xai_size)
+        dico["{}_time".format(method)].append(running_time)
 
-            dico["{}_size".format(method)].append(xai_size)
-            dico["{}_time".format(method)].append(running_time)
-        # add abstract domain average running time and distance between milp and greedy
         dico["index"].append(index)
         dico["label"].append(gt_label)
-        dico["greedy_2_milp"].append(np.max(array_greedy_2_milp))
 
         # record at every sample
         # Create the DataFrame
