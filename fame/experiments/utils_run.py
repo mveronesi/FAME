@@ -14,6 +14,26 @@ def _validate_method(method: str) -> str:
         raise ValueError("method must be either 'milp' or 'greedy'")
     return method
 
+
+def _compute_eps_norm(
+    input_sample: np.ndarray,
+    lower_bound_input: np.ndarray,
+    upper_bound_input: np.ndarray,
+    norm: float,
+) -> float | None:
+    """Returns the effective norm radius used by the abstract domain.
+
+    For L2, this is the radius of the smallest centered L2 ball containing
+    the clipped box [lower_bound_input, upper_bound_input].
+    """
+    if norm == 2:
+        max_delta = np.maximum(
+            np.abs(upper_bound_input - input_sample),
+            np.abs(input_sample - lower_bound_input),
+        )
+        return float(np.linalg.norm(max_delta, ord=2))
+    return None
+
 ## Experiment A: MILP versus Greedy
 
 
@@ -46,6 +66,7 @@ def exp_A_1(
     dico["index"] = []
     dico["label"] = []
     dico["method"] = []
+    dico["eps_norm"] = []
     dico["{}_size".format(method)] = []
     dico["{}_time".format(method)] = []
 
@@ -71,6 +92,12 @@ def exp_A_1(
         else:
             lower_bound_input = np.maximum(input_sample - eps, - (means/stddev))
             upper_bound_input = np.minimum(input_sample + eps, ((1-means)/stddev))
+        eps_norm = _compute_eps_norm(
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            norm=norm,
+        )
         start_time = time.time()
         abstract_set = free_at_once_k_features(
             model=model,
@@ -95,6 +122,7 @@ def exp_A_1(
             print("{} time".format(method), running_time)
 
         dico["method"].append(method)
+        dico["eps_norm"].append(eps_norm)
         dico["{}_size".format(method)].append(xai_size)
         dico["{}_time".format(method)].append(running_time)
 
@@ -139,6 +167,7 @@ def exp_A_2(
     dico["index"] = []
     dico["label"] = []
     dico["method"] = []
+    dico["eps_norm"] = []
     dico["{}_size".format(method)] = []
     dico["{}_time".format(method)] = []
 
@@ -155,6 +184,18 @@ def exp_A_2(
         # define input sample and local robustness region
         input_sample = np.copy(x_test[index] + 0.0)
         gt_label = np.copy(y_test[index] + 0)
+        if means is None or stddev is None:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+        else:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        eps_norm = _compute_eps_norm(
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            norm=norm,
+        )
         xai_indices = []
         free_indices = []
         start_time = time.time()
@@ -183,6 +224,7 @@ def exp_A_2(
             print("{} time".format(method), running_time)
 
         dico["method"].append(method)
+        dico["eps_norm"].append(eps_norm)
         dico["{}_size".format(method)].append(xai_size)
         dico["{}_time".format(method)].append(running_time)
 
@@ -226,6 +268,7 @@ def exp_A_2_no_overwrite(
     dico["index"] = []
     dico["label"] = []
     dico["method"] = []
+    dico["eps_norm"] = []
     dico["{}_size".format(method)] = []
     dico["{}_time".format(method)] = []
 
@@ -242,6 +285,18 @@ def exp_A_2_no_overwrite(
         # define input sample and local robustness region
         input_sample = np.copy(x_test[index] + 0.0)
         gt_label = np.copy(y_test[index] + 0)
+        if means is None or stddev is None:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+        else:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        eps_norm = _compute_eps_norm(
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            norm=norm,
+        )
         xai_indices = []
         free_indices = []
         start_time = time.time()
@@ -270,6 +325,7 @@ def exp_A_2_no_overwrite(
             print("{} time".format(method), running_time)
 
         dico["method"].append(method)
+        dico["eps_norm"].append(eps_norm)
         dico["{}_size".format(method)].append(xai_size)
         dico["{}_time".format(method)].append(running_time)
 
@@ -317,6 +373,7 @@ def exp_B_no_overwrite(
     dico = dict()
     dico["index"] = []
     dico["label"] = []
+    dico["eps_norm"] = []
     dico["{}_size_min".format(method)] = []
     dico["{}_size_max".format(method)] = []
     dico["{}_time".format(method)] = []
@@ -336,6 +393,18 @@ def exp_B_no_overwrite(
         # define input sample and local robustness region
         input_sample = np.copy(x_test[index] + 0.0)
         gt_label = np.copy(y_test[index] + 0)
+        if means is None or stddev is None:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+        else:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        eps_norm = _compute_eps_norm(
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            norm=norm,
+        )
         xai_indices = []
         free_indices = []
         start_time = time.time()
@@ -393,6 +462,7 @@ def exp_B_no_overwrite(
         dico["{}_time".format(attack)].append(attack_time)
         dico["free_time".format(method)].append(free_time)
         dico["dist_2_minimal_xai"].append(len(remaining_indices))
+        dico["eps_norm"].append(eps_norm)
         # add abstract domain average running time and distance between milp and greedy
         dico["index"].append(index)
         dico["label"].append(gt_label)
@@ -439,6 +509,7 @@ def exp_C_no_overwrite(
     dico = dict()
     dico["index"] = []
     dico["label"] = []
+    dico["eps_norm"] = []
     dico["{}_size_min".format(method)] = []
     dico["{}_size_max".format(method)] = []
     dico["{}_time".format(method)] = []
@@ -457,6 +528,18 @@ def exp_C_no_overwrite(
         # define input sample and local robustness region
         input_sample = np.copy(x_test[index] + 0.0)
         gt_label = np.copy(y_test[index] + 0)
+        if means is None or stddev is None:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, 0 * input_sample)
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, 0 * input_sample + 1)
+        else:
+            lower_bound_input = np.maximum(np.copy(input_sample) - eps, - (means/stddev))
+            upper_bound_input = np.minimum(np.copy(input_sample) + eps, ((1-means)/stddev))
+        eps_norm = _compute_eps_norm(
+            input_sample=input_sample,
+            lower_bound_input=lower_bound_input,
+            upper_bound_input=upper_bound_input,
+            norm=norm,
+        )
         xai_indices = []
         free_indices = []
         start_time = time.time()
@@ -517,6 +600,7 @@ def exp_C_no_overwrite(
         dico["{}_time".format(attack)].append(attack_time)
         dico["free_time".format(method)].append(free_time)
         dico["dist_2_minimal_xai"].append(len(remaining_indices))
+        dico["eps_norm"].append(eps_norm)
         # add abstract domain average running time and distance between milp and greedy
         dico["index"].append(index)
         dico["label"].append(gt_label)
