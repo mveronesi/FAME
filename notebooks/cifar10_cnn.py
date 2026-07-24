@@ -20,7 +20,7 @@ MODEL = "cnn"
 
 means_avg = np.mean(means_np)
 std_avg = np.mean(stddevs_np)
-eps = 0.005#(2./255.)/std_avg #0.03
+eps = 0.02#(2./255.)/std_avg #0.03
 print("eps:", eps)
 channel = 3
 data_format = "channels_last"

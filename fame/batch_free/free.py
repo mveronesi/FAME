@@ -153,7 +153,7 @@ def free_at_once_k_features(
     data_format: str = "channels_first",
     n_class: int = 10,
     method: str = "greedy",
-    norm: float = np.inf,
+    norm: float = 2,
     verbose: int = 0,
 ) -> np.ndarray:
     """Finds the largest safe set of features, given cardinality constraints.
@@ -394,7 +394,7 @@ def free_iteratively_k_features(
     method: str = "greedy",
     refining_domain: bool = True,
     verbose: int = 0,
-    norm: float = np.inf,
+    norm: float = 2,
     means=None, 
     stddev=None
 ) -> tuple[list[int], list[int]]:

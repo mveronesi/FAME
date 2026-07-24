@@ -17,6 +17,7 @@ def find_closest_xai(
     xai_indices: list[int] = [],
     free_indices: list[int] = [],
     method: str = "fgsm",
+    norm: float = 2,
     device: str = "mps",
     channel: int = 1,
     data_format: int = "channels_first",
@@ -88,6 +89,7 @@ def find_closest_xai(
         gt_label=gt_label,
         eps=eps,
         method=method,
+        norm=norm,
         device=device
     )  # (1,)
     if adv_pred_everything[0] == gt_label:
@@ -126,6 +128,7 @@ def find_closest_xai(
         free_indices=free_indices,
         remaining_indices=remaining_indices,
         method=method,
+        norm=norm,
         device=device,
         channel=channel,
         data_format=data_format,
@@ -149,6 +152,7 @@ def find_closest_xai(
                 free_indices=free_indices + extra_free,
                 remaining_indices=remaining_indices,
                 method=method,
+                norm=norm,
                 device=device,
                 channel=channel,
                 data_format=data_format,

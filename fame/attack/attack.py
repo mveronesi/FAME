@@ -16,6 +16,7 @@ def attack(
     gt_label: int,
     eps: float,
     method: str,
+    norm: float = 2,
     device: str = "mps",
 ) -> np.ndarray:
     """Generates adversarial examples for a batch of inputs using a specified method.
@@ -47,6 +48,9 @@ def attack(
         generated adversarial examples.
     """
 
+    if norm not in [np.inf, 2]:
+        raise ValueError("unsupported norm {}: only np.inf and 2 are supported".format(norm))
+
     model.to(device)
     input_t: Tensor = torch.tensor(input_sample_batch, dtype=torch.float32, device=device)
     lower_t: Tensor = torch.tensor(lower_bound_batch, dtype=torch.float32, device=device)
@@ -62,7 +66,7 @@ def attack(
             x=input_t,
             eps=eps,
             loss_fn=torch.nn.CrossEntropyLoss(),
-            norm=np.inf,
+            norm=norm,
             clip_min=lower_t,
             clip_max=upper_t,
             y=gt_label_t,
@@ -77,7 +81,7 @@ def attack(
             eps_iter=eps_iter,
             nb_iter=nb_iter,
             loss_fn=torch.nn.CrossEntropyLoss(),
-            norm=np.inf,
+            norm=norm,
             clip_min=lower_t,
             clip_max=upper_t,
             y=gt_label_t,
@@ -96,6 +100,7 @@ def find_singleton_feature_2_add(
     free_indices: list[int] = [],
     remaining_indices: list[int] = [],  # attack only those features
     method: str = "fgsm",
+    norm: float = 2,
     device: str = "mps",
     channel: int = 1,
     data_format="channels_first",
@@ -151,6 +156,7 @@ def find_singleton_feature_2_add(
         gt_label=gt_label,
         eps=eps,
         method=method,
+        norm=norm,
         device=device,
     )  # (batch_size,)
 
