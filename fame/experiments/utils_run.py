@@ -20,13 +20,17 @@ def _compute_eps_norm(
     lower_bound_input: np.ndarray,
     upper_bound_input: np.ndarray,
     norm: float,
+    eps: float | None = None,
 ) -> float | None:
     """Returns the effective norm radius used by the abstract domain.
 
-    For L2, this is the radius of the smallest centered L2 ball containing
+    For L2, this is the user-specified L2 radius when provided.
+    Otherwise, it falls back to the smallest centered L2 ball containing
     the clipped box [lower_bound_input, upper_bound_input].
     """
     if norm == 2:
+        if eps is not None:
+            return float(eps)
         max_delta = np.maximum(
             np.abs(upper_bound_input - input_sample),
             np.abs(input_sample - lower_bound_input),
@@ -97,6 +101,7 @@ def exp_A_1(
             lower_bound_input=lower_bound_input,
             upper_bound_input=upper_bound_input,
             norm=norm,
+            eps=eps,
         )
         start_time = time.time()
         abstract_set = free_at_once_k_features(
@@ -114,6 +119,7 @@ def exp_A_1(
             method=method,
             verbose=int(verbose > 1),
             norm=norm,
+            eps_l2=eps,
         )
         end_time = time.time()
         xai_size = np.max(abstract_set.sum(-1))
@@ -195,6 +201,7 @@ def exp_A_2(
             lower_bound_input=lower_bound_input,
             upper_bound_input=upper_bound_input,
             norm=norm,
+            eps=eps,
         )
         xai_indices = []
         free_indices = []
@@ -296,6 +303,7 @@ def exp_A_2_no_overwrite(
             lower_bound_input=lower_bound_input,
             upper_bound_input=upper_bound_input,
             norm=norm,
+            eps=eps,
         )
         xai_indices = []
         free_indices = []
@@ -404,6 +412,7 @@ def exp_B_no_overwrite(
             lower_bound_input=lower_bound_input,
             upper_bound_input=upper_bound_input,
             norm=norm,
+            eps=eps,
         )
         xai_indices = []
         free_indices = []
@@ -539,6 +548,7 @@ def exp_C_no_overwrite(
             lower_bound_input=lower_bound_input,
             upper_bound_input=upper_bound_input,
             norm=norm,
+            eps=eps,
         )
         xai_indices = []
         free_indices = []

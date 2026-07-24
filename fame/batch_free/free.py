@@ -154,6 +154,7 @@ def free_at_once_k_features(
     n_class: int = 10,
     method: str = "greedy",
     norm: float = 2,
+    eps_l2: float | None = None,
     verbose: int = 0,
 ) -> np.ndarray:
     """Finds the largest safe set of features, given cardinality constraints.
@@ -231,12 +232,9 @@ def free_at_once_k_features(
 
     eps_norm: float | None = None
     if norm == 2:
-        # Use the smallest L2 ball centered at input_sample that contains the current box.
-        max_delta = np.maximum(
-            np.abs(upper_bound - input_sample),
-            np.abs(input_sample - lower_bound),
-        )
-        eps_norm = float(np.linalg.norm(max_delta, ord=2))
+        if eps_l2 is None:
+            raise ValueError("eps_l2 must be provided when norm=2")
+        eps_norm = float(eps_l2)
 
     batch_size: int = len(cardinality)
 
@@ -465,6 +463,7 @@ def free_iteratively_k_features(
         method=method,
         verbose=verbose,
         norm=norm,
+        eps_l2=eps,
     )
 
     if refining_domain:
@@ -512,6 +511,7 @@ def free_iteratively_k_features(
                 method=method,
                 verbose=0,
                 norm=norm,
+                eps_l2=eps,
             )
 
     # we consider the tightest abstract domain at our disposal: singleton + set of current free features
