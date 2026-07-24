@@ -34,19 +34,19 @@ def get_dataset(augment=True, get_train=True, get_val=False):
     test_transform = transforms.ToTensor()
     
     if get_train:
-        train = torchvision.datasets.CIFAR10(root='datasets/CIFAR10_Dataset', train=True, download=True, transform=train_transform)
+        train = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=True, download=True, transform=train_transform)
         if get_val:
             train_size = int(len(train) * 0.8)
             indices = [k for k in range(len(train))]
             random.shuffle(indices)
             train = torch.utils.data.Subset(train, indices[:train_size])
-            val = torchvision.datasets.CIFAR10(root='datasets/CIFAR10_Dataset', train=True, download=False, transform=test_transform)
+            val = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=True, download=False, transform=test_transform)
             val = torch.utils.data.Subset(val, indices[train_size:])
             return train, val
         else:
             return train
     else:
-        test = torchvision.datasets.CIFAR10(root='datasets/CIFAR10_Dataset', train=False, download=True, transform=test_transform)
+        test = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=False, download=True, transform=test_transform)
         return test
 
 class Network(nn.Module):

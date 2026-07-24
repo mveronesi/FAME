@@ -13,3 +13,7 @@ venv/
 *.csv
 *.log
 .DS_Store
+*.egg-info
+build/
+*pyc
+.logs*

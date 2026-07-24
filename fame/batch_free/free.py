@@ -30,7 +30,7 @@ def get_features_batch(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
-    batch_size: int = 25,
+    batch_size: int = 15,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Performs a batched abstract interpretation pass over a hybrid L-inf/L0 domain.
 

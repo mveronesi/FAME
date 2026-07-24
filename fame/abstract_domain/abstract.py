@@ -66,7 +66,7 @@ def get_abstract_output_domain_singleton(
     data_format: str = "channels_first",
     n_class: int = 10,
     decomon_model: keras.models.Model = None,
-    batch_size: int =25,
+    batch_size: int = 15,
 ) -> np.ndarray:
     """Computes the certified output bounds when perturbing single features one by one.
 
