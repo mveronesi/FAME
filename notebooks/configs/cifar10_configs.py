@@ -22,7 +22,10 @@ num_classes = 10
 means_np = np.array(means, dtype=np.float32)
 stddevs_np = np.array(stddevs, dtype=np.float32)
 
+
+
 def get_dataset(augment=True, get_train=True, get_val=False):
+    data_dir = "/leonardo_work/AIFAC_P02_648/cifar10_data"
     if augment:
         train_transform = transforms.Compose(
             [transforms.RandomCrop(32, padding=4, padding_mode='edge'),
@@ -34,19 +37,19 @@ def get_dataset(augment=True, get_train=True, get_val=False):
     test_transform = transforms.ToTensor()
     
     if get_train:
-        train = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=True, download=True, transform=train_transform)
+        train = torchvision.datasets.CIFAR10(root=data_dir, train=True, download=True, transform=train_transform)
         if get_val:
             train_size = int(len(train) * 0.8)
             indices = [k for k in range(len(train))]
             random.shuffle(indices)
             train = torch.utils.data.Subset(train, indices[:train_size])
-            val = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=True, download=False, transform=test_transform)
+            val = torchvision.datasets.CIFAR10(root=data_dir, train=True, download=False, transform=test_transform)
             val = torch.utils.data.Subset(val, indices[train_size:])
             return train, val
         else:
             return train
     else:
-        test = torchvision.datasets.CIFAR10(root='/home/michele/cifar10_data', train=False, download=True, transform=test_transform)
+        test = torchvision.datasets.CIFAR10(root=data_dir, train=False, download=True, transform=test_transform)
         return test
 
 class Network(nn.Module):
@@ -68,40 +71,6 @@ class Network(nn.Module):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-
-
-# gtss_train = [
-#     {
-#         ROTATE: (-10, 10, 0.001)
-#     },
-#     {
-#         ROTATE: (-2, 2, 0.02),
-#         SHEAR: (-0.02, 0.02, 0.0005)
-#     },
-#     {
-#         SCALE: (0.99, 1.01, 0.00005),
-#         ROTATE: (-1, 1, 0.005),
-#         CONTRAST: (0.99, 1.01, 0.005),
-#         BRIGHTNESS: (-0.001, 0.001, 0.002)
-#     }
-# ]
-
-# gtss_certify = [
-#     {
-#         ROTATE: (-10, 10, 0.0002)
-#     },
-#     {
-#         ROTATE: (-2, 2, 0.01),
-#         SHEAR: (-0.02, 0.02, 0.00025)
-#     },
-#     {
-#         SCALE: (0.99, 1.01, 0.00005),
-#         ROTATE: (-1, 1, 0.005),
-#         CONTRAST: (0.99, 1.01, 0.005),
-#         BRIGHTNESS: (-0.001, 0.001, 0.002)
-#     }
-# ]
-
 
 
 def dataset_to_numpy(dataset: torch.utils.data.Dataset, means_np: np.ndarray, stddevs_np: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:

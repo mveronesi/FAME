@@ -8,6 +8,122 @@ from fame.abstract_domain.abstract import get_abstract_output_domain
 from keras import KerasTensor as Tensor
 
 
+def get_upper_ball_l0(
+    x_center: Tensor,
+    w: Tensor,
+    b: Tensor,
+    mask_xai: np.ndarray,
+    mask_free: np.ndarray,
+    channel: int,
+    data_format: str,
+    cardinality: Union[int, List[int]],
+    eps: float,
+    **kwargs: Any,
+) -> Tensor:
+    """Upper bound for a masked L2 ball with an additional L0 budget.
+
+    The domain is centered at `x_center` with global L2 radius `eps`:
+    - features in `mask_xai` are fixed,
+    - features in `mask_free` are always allowed to move,
+    - among remaining features, at most `cardinality` can move.
+
+    This computes an exact bound for that domain (without box clipping):
+    `w*x_center + b + eps * ||w_allowed||_2`, where `w_allowed` includes
+    all free features and the best `k` remaining features by squared norm.
+    """
+
+    missing_batchsize = "missing_batchsize" in kwargs and kwargs["missing_batchsize"]
+    if missing_batchsize:
+        w = w[None]
+        b = b[None]
+
+    n_h = len(w.shape[2:])
+    n_in = int(w.shape[1] / channel)
+
+    if data_format == "channels_first":
+        w = K.reshape(w, (-1, channel, n_in) + w.shape[2:])
+        x_center_out = K.reshape(x_center, [-1, channel, n_in] + [1] * n_h)
+        axis_channel = 1
+    else:
+        w = K.reshape(w, (-1, n_in, channel) + w.shape[2:])
+        x_center_out = K.reshape(x_center, [-1, n_in, channel] + [1] * n_h)
+        axis_channel = 2
+
+    mask_xai_out = K.reshape(mask_xai, [-1, n_in] + [1] * n_h)
+    mask_free_out = K.reshape(mask_free, [-1, n_in] + [1] * n_h)
+
+    # nominal affine value at the center of the domain
+    center_affine = b + K.sum(K.sum(w * x_center_out, axis=axis_channel), axis=1)
+
+    # per-feature squared L2 sensitivity for each output
+    w_sq_feature = K.sum(w * w, axis=axis_channel)
+
+    # free features are always part of the active support
+    free_sq = K.sum(w_sq_feature * mask_free_out, axis=1)
+
+    # candidate features: not xai and not free
+    cand_sq = w_sq_feature * (1 - mask_xai_out) * (1 - mask_free_out)
+    cand_sq_sorted = -keras.ops.sort(-cand_sq, axis=1)
+
+    if isinstance(cardinality, int):
+        k = max(0, int(cardinality))
+        if k > 0:
+            cand_sq_topk = K.sum(cand_sq_sorted[:, :k], axis=1)
+        else:
+            cand_sq_topk = 0.0 * free_sq
+    else:
+        # Per-sample cardinality.
+        # Use a row-wise construction instead of advanced tensor indexing,
+        # which can trigger CUDA index asserts with the torch backend.
+        batch_size = len(cardinality)
+        k = np.array(cardinality, dtype=int)
+        k = np.clip(k, 0, n_in)
+        if np.max(k) == 0:
+            cand_sq_topk = 0.0 * free_sq
+        else:
+            topk_rows = []
+            for row in range(batch_size):
+                k_row = int(k[row])
+                if k_row == 0:
+                    row_topk = 0.0 * free_sq[row : row + 1]
+                else:
+                    row_topk = K.sum(cand_sq_sorted[row : row + 1, :k_row], axis=1)
+                topk_rows.append(row_topk)
+            cand_sq_topk = K.concatenate(topk_rows, axis=0)
+
+    total_sq = K.maximum(free_sq + cand_sq_topk, 0.0)
+    radius_term = eps * K.sqrt(total_sq)
+    return center_affine + radius_term
+
+
+def get_lower_ball_l0(
+    x_center: Tensor,
+    w: Tensor,
+    b: Tensor,
+    mask_xai: np.ndarray,
+    mask_free: np.ndarray,
+    channel: int,
+    data_format: str,
+    cardinality: Union[int, List[int]],
+    eps: float,
+    **kwargs: Any,
+) -> Tensor:
+    """Lower bound counterpart of `get_upper_ball_l0` via duality."""
+
+    return -get_upper_ball_l0(
+        x_center=x_center,
+        w=-w,
+        b=-b,
+        mask_xai=mask_xai,
+        mask_free=mask_free,
+        channel=channel,
+        data_format=data_format,
+        cardinality=cardinality,
+        eps=eps,
+        **kwargs,
+    )
+
+
 def get_upper_box_l0(
     x_min: Tensor,
     x_max: Tensor,
@@ -67,7 +183,7 @@ def get_upper_box_l0(
         b = b[None]
 
     # split into positive and negative components
-    n_h: list[int] = len(w.shape[2:])  # output shape of the layer
+    n_h: int = len(w.shape[2:])  # output shape of the layer
     n_in: int = int(
         w.shape[1] / channel
     )  # number of input features (without the channel dimension)

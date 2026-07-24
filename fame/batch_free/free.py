@@ -140,6 +140,73 @@ def get_features_batch(
     return w_u, b_u, upper, box
 
 
+def _debug_l2_radius_components(
+    w_u: np.ndarray,
+    cardinality: np.ndarray,
+    free_indices: list[int],
+    xai_indices: list[int],
+    channel: int,
+    data_format: str,
+    eps_l2: float,
+) -> None:
+    """Prints compact L2 radius decomposition for a few cardinality values."""
+
+    batch_size, n_in_with_channel, n_out = w_u.shape
+    n_in_wo_channel = int(n_in_with_channel / channel)
+
+    if data_format == "channels_first":
+        w_sq = np.sum(np.reshape(w_u * w_u, (batch_size, channel, n_in_wo_channel, n_out)), axis=1)
+    else:
+        w_sq = np.sum(np.reshape(w_u * w_u, (batch_size, n_in_wo_channel, channel, n_out)), axis=2)
+
+    free_mask = np.zeros((n_in_wo_channel,), dtype=bool)
+    free_mask[free_indices] = True
+    xai_mask = np.zeros((n_in_wo_channel,), dtype=bool)
+    xai_mask[xai_indices] = True
+    cand_mask = ~(free_mask | xai_mask)
+
+    if np.any(free_mask):
+        free_sq_per_out = np.sum(w_sq[:, free_mask, :], axis=1)
+    else:
+        free_sq_per_out = np.zeros((batch_size, n_out))
+
+    row_candidates = [0, int(batch_size / 2), batch_size - 1]
+    row_candidates = sorted(set([r for r in row_candidates if r >= 0 and r < batch_size]))
+
+    print(
+        "[L2 debug] batch_size={}, n_out={}, free_count={}, xai_count={}, eps={}".format(
+            batch_size, n_out, len(free_indices), len(xai_indices), eps_l2
+        )
+    )
+
+    for row in row_candidates:
+        k = int(cardinality[row])
+        cand_sq = w_sq[row, cand_mask, :]
+        n_cand = cand_sq.shape[0]
+        k = min(max(k, 0), n_cand)
+
+        if k == 0 or n_cand == 0:
+            topk_sq = np.zeros((n_out,))
+        else:
+            topk_sq = np.sum(np.sort(cand_sq, axis=0)[-k:], axis=0)
+
+        free_sq = free_sq_per_out[row]
+        total_sq = np.maximum(free_sq + topk_sq, 0.0)
+        radius = eps_l2 * np.sqrt(total_sq)
+        worst_out = int(np.argmax(radius))
+
+        print(
+            "[L2 debug] row={} k={} worst_out={} free_part={:.6f} topk_part={:.6f} total_radius={:.6f}".format(
+                row,
+                k,
+                worst_out,
+                eps_l2 * np.sqrt(max(float(free_sq[worst_out]), 0.0)),
+                eps_l2 * np.sqrt(max(float(topk_sq[worst_out]), 0.0)),
+                float(radius[worst_out]),
+            )
+        )
+
+
 def free_at_once_k_features(
     model: keras.models.Model,
     gt_label: int,
@@ -268,6 +335,16 @@ def free_at_once_k_features(
     if verbose:
         print("upper", upper)
         print("b", b_u)
+    if norm == 2 and eps_norm is not None and verbose:
+        _debug_l2_radius_components(
+            w_u=w_u,
+            cardinality=cardinality,
+            free_indices=free_indices,
+            xai_indices=xai_indices,
+            channel=channel,
+            data_format=data_format,
+            eps_l2=eps_norm,
+        )
 
     # TO FINISH
     w_u_pos: np.ndarray = np.maximum(w_u, 0.0)  # (batch_size, n_in_with_channel, n_class-1)

@@ -1,23 +1,6 @@
 import sys
 sys.path.append("../")
 import os
-import GPUtil
-
-def _select_gpu_with_most_free_memory() -> None:
-    """Restrict CUDA visibility to the GPU with the most free memory."""
-    gpus = GPUtil.getGPUs()
-    if not gpus:
-        print("No GPU detected by GPUtil; running with current device visibility.")
-        return
-
-    best_gpu = max(gpus, key=lambda gpu: gpu.memoryFree)
-    os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(best_gpu.id)
-    print(
-        f"Selected GPU {best_gpu.id} ({best_gpu.name}) with "
-        f"{best_gpu.memoryFree:.0f} MB free memory."
-    )
-_select_gpu_with_most_free_memory()
 os.environ["KERAS_BACKEND"] = "torch"
 
 from fame.experiments import exp_A_1, exp_A_2, exp_A_2_no_overwrite, exp_B_no_overwrite
@@ -57,11 +40,8 @@ def main(args: Namespace):
     """
     download and process CIFAR10 data.
     """
-    date=str(norm)
     test_dataset = get_dataset(augment=False, get_train=False, get_val=False)
-
     x_test, y_test = dataset_to_numpy(test_dataset, means_np, stddevs_np)
-
     x_test_flattened = np.reshape(x_test, (-1, 3072))
     print(f"x_test shape (Normalisé, NHWC): {x_test.shape}")
     print(f"x_test dtype: {x_test.dtype}")
@@ -95,7 +75,7 @@ def main(args: Namespace):
     random.shuffle(indices)
     print("Indices:", indices)
 
-    dataframe_repository = "./results/CIFAR10/eps-{}/{}".format(f'{eps:.2f}'.replace('0.', ''),date)
+    dataframe_repository = "./results/CIFAR10/eps-{}".format(f'{eps}'.replace('0.', ''))
     os.makedirs(dataframe_repository, exist_ok =True)
 
     EXP = "A_2"
@@ -117,7 +97,7 @@ def main(args: Namespace):
                 channel=channel,
                 data_format=data_format,
                 n_class=n_class,
-                verbose=1,
+                verbose=2,
                 sleep_time=0,
                 means=means_avg,
                 stddev=std_avg,
@@ -156,7 +136,13 @@ def main(args: Namespace):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--eps", required=True, type=float, help="Perturbation size for adversarial attacks.")
-    parser.add_argument("--norm", required=False, type=float, default=2, help="Norm type for adversarial attacks (default: 2).")
+    parser.add_argument(
+        "--norm",
+        required=False,
+        type=float,
+        default=2,
+        help="Norm type for adversarial attacks (default: 2).",
+    )
     parser.add_argument("--method", required=False, type=str, default="greedy", help="Search method for experiment A (milp or greedy).")
     args = parser.parse_args()
     main(args)

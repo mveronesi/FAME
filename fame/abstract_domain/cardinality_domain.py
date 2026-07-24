@@ -1,8 +1,13 @@
 from typing import Any, List, Union
 
 import numpy as np
-from decomon.perturbation_domain import PerturbationDomain, get_upper_ball, get_lower_ball
-from fame.abstract_domain.utils import get_lower_box_l0, get_upper_box_l0
+from decomon.perturbation_domain import PerturbationDomain
+from fame.abstract_domain.utils import (
+    get_lower_ball_l0,
+    get_lower_box_l0,
+    get_upper_ball_l0,
+    get_upper_box_l0,
+)
 from keras import KerasTensor as Tensor
 
 
@@ -123,13 +128,16 @@ class XAIDomain(PerturbationDomain):
         if self.norm == 2:
             if self.eps is None:
                 raise ValueError("eps must be provided when norm=2")
-            eps_l2: float = self.eps
-            return get_upper_ball(
-                x_0=x_center,
-                eps=eps_l2,
-                p=2,
+            return get_upper_ball_l0(
+                x_center=x_center,
                 w=w,
                 b=b,
+                mask_xai=self.xai_mask,
+                mask_free=self.free_mask,
+                channel=self.channel,
+                data_format=self.data_format,
+                cardinality=self.cardinalities,
+                eps=float(self.eps),
                 **kwargs,
             )
 
@@ -171,13 +179,16 @@ class XAIDomain(PerturbationDomain):
         if self.norm == 2:
             if self.eps is None:
                 raise ValueError("eps must be provided when norm=2")
-            eps_l2: float = self.eps
-            return get_lower_ball(
-                x_0=x_center,
-                eps=eps_l2,
-                p=2,
+            return get_lower_ball_l0(
+                x_center=x_center,
                 w=w,
                 b=b,
+                mask_xai=self.xai_mask,
+                mask_free=self.free_mask,
+                channel=self.channel,
+                data_format=self.data_format,
+                cardinality=self.cardinalities,
+                eps=float(self.eps),
                 **kwargs,
             )
 
