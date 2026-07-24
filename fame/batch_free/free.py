@@ -31,6 +31,8 @@ def get_features_batch(
     data_format: str = "channels_first",
     n_class: int = 10,
     batch_size: int = 15,
+    norm: float = 2,
+    eps: float | None = None,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Performs a batched abstract interpretation pass over a hybrid L-inf/L0 domain.
 
@@ -98,6 +100,8 @@ def get_features_batch(
             n_dim=n_in_wo_channel,
             channel=channel,
             data_format=data_format,
+            norm=norm,
+            eps=eps,
         )
         box: np.ndarray = np.concatenate(
             [lower_bound_batch[:, None], upper_bound_batch[:, None], input_sample_batch[:, None]], 1
@@ -149,6 +153,7 @@ def free_at_once_k_features(
     data_format: str = "channels_first",
     n_class: int = 10,
     method: str = "greedy",
+    norm: float = np.inf,
     verbose: int = 0,
 ) -> np.ndarray:
     """Finds the largest safe set of features, given cardinality constraints.
@@ -221,6 +226,18 @@ def free_at_once_k_features(
     lower_bound = np.reshape(lower_bound, (n_in_with_channel,))
     upper_bound = np.reshape(upper_bound, (n_in_with_channel,))
 
+    if norm not in [np.inf, 2]:
+        raise ValueError("unsupported norm {}: only np.inf and 2 are supported".format(norm))
+
+    eps_norm: float | None = None
+    if norm == 2:
+        # Use the smallest L2 ball centered at input_sample that contains the current box.
+        max_delta = np.maximum(
+            np.abs(upper_bound - input_sample),
+            np.abs(input_sample - lower_bound),
+        )
+        eps_norm = float(np.linalg.norm(max_delta, ord=2))
+
     batch_size: int = len(cardinality)
 
     w_u: np.ndarray
@@ -238,6 +255,8 @@ def free_at_once_k_features(
         channel=channel,
         data_format=data_format,
         n_class=n_class,
+        norm=norm,
+        eps=eps_norm,
     )
 
     # w_u (batch_size, n_in_with_channel, n_class-1)
@@ -375,6 +394,7 @@ def free_iteratively_k_features(
     method: str = "greedy",
     refining_domain: bool = True,
     verbose: int = 0,
+    norm: float = np.inf,
     means=None, 
     stddev=None
 ) -> tuple[list[int], list[int]]:
@@ -444,6 +464,7 @@ def free_iteratively_k_features(
         n_class=n_class,
         method=method,
         verbose=verbose,
+        norm=norm,
     )
 
     if refining_domain:
@@ -490,6 +511,7 @@ def free_iteratively_k_features(
                 n_class=n_class,
                 method=method,
                 verbose=0,
+                norm=norm,
             )
 
     # we consider the tightest abstract domain at our disposal: singleton + set of current free features

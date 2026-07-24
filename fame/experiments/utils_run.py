@@ -24,6 +24,7 @@ def exp_A_1(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    norm=2,
     means=None, 
     stddev=None
 ):
@@ -81,6 +82,7 @@ def exp_A_1(
                 n_class=n_class,
                 method=method,
                 verbose=int(verbose > 1),
+                norm=norm,
             )
             end_time = time.time()
             # update array_greedy_2_milp to compute the worst case predicted distance between milp and greedy
@@ -119,6 +121,7 @@ def exp_A_2(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    norm = 2,
     means = None, 
     stddev = None
 ):
@@ -169,6 +172,7 @@ def exp_A_2(
                 n_class=n_class,
                 method=method,
                 verbose=int(verbose > 1),
+                norm=norm,
                 means=means, 
                 stddev=stddev
             )
@@ -209,6 +213,7 @@ def exp_A_2_no_overwrite(
     n_class: int = 10,
     verbose: int = 0,
     sleep_time: int = 1,  # one second between each run
+    norm=2,
     means=None, 
     stddev=None
 ):
@@ -259,6 +264,7 @@ def exp_A_2_no_overwrite(
                 n_class=n_class,
                 method=method,
                 verbose=int(verbose > 1),
+                norm=norm,
                 means=means, 
                 stddev=stddev
             )
@@ -306,6 +312,7 @@ def exp_B_no_overwrite(
     device="mps",
     n_class: int = 10,
     verbose: int = 0,
+    norm=2,
     means=None, 
     stddev=None
 ):
@@ -354,6 +361,7 @@ def exp_B_no_overwrite(
             n_class=n_class,
             method=method,
             verbose=int(verbose > 1),
+            norm=norm,
             means=means, 
             stddev=stddev
         )
@@ -425,6 +433,7 @@ def exp_C_no_overwrite(
     device="mps",
     n_class: int = 10,
     verbose: int = 0,
+    norm=2,
     means=None, 
     stddev=None
 ):
@@ -473,6 +482,7 @@ def exp_C_no_overwrite(
             method=method,
             refining_domain=False, # use only binary search like Verix
             verbose=int(verbose > 1),
+            norm=norm,
             means=means, 
             stddev=stddev
         )

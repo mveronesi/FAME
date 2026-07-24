@@ -1,7 +1,7 @@
 from typing import Any, List, Union
 
 import numpy as np
-from decomon.perturbation_domain import PerturbationDomain, get_upper_box
+from decomon.perturbation_domain import PerturbationDomain, get_upper_ball, get_lower_ball
 from fame.abstract_domain.utils import get_lower_box_l0, get_upper_box_l0
 from keras import KerasTensor as Tensor
 
@@ -42,6 +42,8 @@ class XAIDomain(PerturbationDomain):
         n_dim: int,
         channel: int,
         data_format: str = "channels_first",
+        norm: float = 2,
+        eps: Union[float, None] = None,
         *kwargs: Any,
     ):
         """Initializes the XAIDomain.
@@ -79,6 +81,13 @@ class XAIDomain(PerturbationDomain):
         self.cardinalities: Union[
             int, List[int]
         ] = cardinalities  # if list of int, WARNING: the length is equal to batchsize
+        self.norm: float = norm
+        self.eps: Union[float, None] = eps
+
+        if self.norm not in [np.inf, 2]:
+            raise ValueError("unsupported norm {}: only np.inf and 2 are supported".format(self.norm))
+        if self.norm == 2 and self.eps is None:
+            raise ValueError("eps must be provided when norm=2")
 
     def get_nb_x_components(self) -> int:
         """Returns the number of components in the input domain tensor `x`.
@@ -110,6 +119,19 @@ class XAIDomain(PerturbationDomain):
         x_min: Tensor = self.get_lower_x(x)
         x_max: Tensor = self.get_upper_x(x)
         x_center: Tensor = self.get_center_x(x)
+
+        if self.norm == 2:
+            if self.eps is None:
+                raise ValueError("eps must be provided when norm=2")
+            eps_l2: float = self.eps
+            return get_upper_ball(
+                x_0=x_center,
+                eps=eps_l2,
+                p=2,
+                w=w,
+                b=b,
+                **kwargs,
+            )
 
         res: Tensor = get_upper_box_l0(
             x_min=x_min,
@@ -145,6 +167,19 @@ class XAIDomain(PerturbationDomain):
         x_min: Tensor = self.get_lower_x(x)
         x_max: Tensor = self.get_upper_x(x)
         x_center: Tensor = self.get_center_x(x)
+
+        if self.norm == 2:
+            if self.eps is None:
+                raise ValueError("eps must be provided when norm=2")
+            eps_l2: float = self.eps
+            return get_lower_ball(
+                x_0=x_center,
+                eps=eps_l2,
+                p=2,
+                w=w,
+                b=b,
+                **kwargs,
+            )
 
         return get_lower_box_l0(
             x_min=x_min,

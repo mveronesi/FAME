@@ -25,6 +25,8 @@ print("eps:", eps)
 channel = 3
 data_format = "channels_last"
 n_class = 10
+norm = 2 # np.inf
+print("norm:", norm)
 
 date="24-07-26"
 
@@ -87,7 +89,8 @@ os.makedirs(dataframe_repository, exist_ok =True)
 #         n_class=n_class,
 #         verbose=1,
 #         means=means_avg,
-#         stddev=std_avg
+#         stddev=std_avg,
+#         norm=norm,
 #         #decomon_method=decomon_method
 #     )
 
@@ -112,7 +115,8 @@ for j in indices:
             verbose=1,
             sleep_time=0,
             means=means_avg,
-            stddev=std_avg
+            stddev=std_avg,
+            norm=norm,
         )
     except Exception as ex:
         print("exception: ", ex)
