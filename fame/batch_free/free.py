@@ -538,6 +538,8 @@ def free_iteratively_k_features(
         channel=channel,
         data_format=data_format,
         n_class=n_class,
+        norm=norm,
+        eps_l2=eps,
     )
 
     return free_indices, singleton_free_index

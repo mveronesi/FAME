@@ -21,7 +21,9 @@ def free_domain_with_abstract_interpretation_singleton(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
-    decomon_model: keras.models.Model = None,
+    decomon_model: Union[keras.models.Model, None] = None,
+    norm: float = np.inf,
+    eps_l2: float | None = None,
 ) -> tuple[list[int], list[int]]:
     """Identifies individual features that can be proven robust using abstract interpretation.
 
@@ -78,6 +80,8 @@ def free_domain_with_abstract_interpretation_singleton(
         data_format=data_format,
         n_class=n_class,
         decomon_model=decomon_model,
+        norm=norm,
+        eps_l2=eps_l2,
     )
 
     if np.min(np.max(upper, -1)) <= 0:
@@ -104,7 +108,9 @@ def free_with_binary_search(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
-    decomon_model: keras.models.Model = None,
+    decomon_model: Union[keras.models.Model, None] = None,
+    norm: float = np.inf,
+    eps_l2: float | None = None,
 ) -> list[int]:
     """Finds a maximal robust subset of features using a recursive binary search.
 
@@ -155,13 +161,15 @@ def free_with_binary_search(
         data_format=data_format,
         n_class=n_class,
         decomon_model=decomon_model,
+        norm=norm,
+        eps_l2=eps_l2,
     )
 
     if len(other_singleton):
         # create an order
         traversal_order_indices: list[int] = best_singleton + other_singleton
         # try to free everything at once
-        upper: np.array = get_abstract_output_domain(
+        upper: np.ndarray = get_abstract_output_domain(
             model=model,
             input_sample=input_sample,
             lower_bound=lower_bound,
@@ -172,6 +180,8 @@ def free_with_binary_search(
             data_format=data_format,
             n_class=n_class,
             decomon_model=decomon_model,
+            norm=norm,
+            eps_l2=eps_l2,
         )  # (1, n_out)
         is_safe: bool = np.max(upper) <= 0
         if is_safe:
@@ -195,6 +205,8 @@ def free_with_binary_search(
                 data_format=data_format,
                 n_class=n_class,
                 decomon_model=decomon_model,
+                norm=norm,
+                eps_l2=eps_l2,
             )
             # considering this singleton indices as part of the free indices try to free as much as possible the rest
             singleton_indices_part_1 = free_with_binary_search(
@@ -209,6 +221,8 @@ def free_with_binary_search(
                 data_format=data_format,
                 n_class=n_class,
                 decomon_model=decomon_model,
+                norm=norm,
+                eps_l2=eps_l2,
             )
             return singleton_indices_part_0 + singleton_indices_part_1
     else:
@@ -228,7 +242,9 @@ def free_with_singleton_search(
     channel: int = 1,
     data_format: str = "channels_first",
     n_class: int = 10,
-    decomon_model: keras.models.Model = None,
+    decomon_model: Union[keras.models.Model, None] = None,
+    norm: float = np.inf,
+    eps_l2: float | None = None,
 ) -> list[int]:
     """Finds a set of robust features by iteratively and greedily selecting singletons.
 
@@ -276,6 +292,8 @@ def free_with_singleton_search(
         data_format=data_format,
         n_class=n_class,
         decomon_model=decomon_model,
+        norm=norm,
+        eps_l2=eps_l2,
     )
 
     singleton_solutions: list[int] = best_singleton
@@ -293,6 +311,8 @@ def free_with_singleton_search(
             data_format=data_format,
             n_class=n_class,
             decomon_model=decomon_model,
+            norm=norm,
+            eps_l2=eps_l2,
         )
         singleton_solutions += best_singleton
 

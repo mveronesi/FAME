@@ -9,6 +9,64 @@ from keras.layers import Input
 from ..batch_free.utils import encode_matrix
 
 
+def _predict_upper_l2(
+    model: keras.models.Model,
+    input_sample: np.ndarray,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    gt_label: int,
+    n_class: int,
+    channel: int,
+    data_format: str,
+    eps_l2: float,
+) -> np.ndarray:
+    """Computes certified upper bounds for an L2 ball of radius eps_l2.
+
+    The input bounds are kept to build the domain tensor with the same interface
+    used elsewhere: [lower, upper, center]. The L2 radius drives the guarantee.
+    """
+    if eps_l2 is None:
+        raise ValueError("eps_l2 must be provided when norm=2")
+
+    # Local import avoids a circular dependency at module import time.
+    from .cardinality_domain import XAIDomain
+
+    n_in_with_channel = input_sample.shape[-1]
+    n_in_wo_channel = int(n_in_with_channel / channel)
+    batch_size = lower_bounds.shape[0]
+
+    xai_perturbation_domain = XAIDomain(
+        xai_indices=[],
+        free_indices=[],
+        cardinalities=0,
+        n_dim=n_in_wo_channel,
+        channel=channel,
+        data_format=data_format,
+        norm=2,
+        eps=float(eps_l2),
+    )
+
+    center_batch = np.repeat(np.copy(input_sample[None]) + 0.0, repeats=batch_size, axis=0)
+    x_domain = np.concatenate(
+        [lower_bounds[:, None], upper_bounds[:, None], center_batch[:, None]], axis=1
+    )  # (batch, 3, n_in_with_channel)
+
+    C: Tensor = Input((n_class, n_class - 1))
+    C_gt: np.ndarray = np.repeat(
+        encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=batch_size, axis=0
+    )
+
+    decomon_model = clone(
+        model,
+        perturbation_domain=xai_perturbation_domain,
+        final_affine=False,
+        final_ibp=True,
+        final_lower=False,
+        backward_bounds=[C],
+    )
+    return decomon_model.predict([x_domain, C_gt], verbose=0)
+
+
 def get_abstract_model(
     model: keras.models.Model, n_class: int = 10, final_affine: bool = False, final_ibp: bool = True
 ) -> keras.models.Model:
@@ -67,6 +125,8 @@ def get_abstract_output_domain_singleton(
     n_class: int = 10,
     decomon_model: keras.models.Model = None,
     batch_size: int = 15,
+    norm: float = np.inf,
+    eps_l2: float | None = None,
 ) -> np.ndarray:
     """Computes the certified output bounds when perturbing single features one by one.
 
@@ -199,32 +259,48 @@ def get_abstract_output_domain_singleton(
 
                     pdb.set_trace()
 
-        # flatten lower_bound_batch and upper_bound_batch
-        lower_bound_batch = np.reshape(
-            lower_bound_batch, (-1, 1, n_in_with_channel)
-        )  # (batch_size, 1, n_in_with_channel)
-        upper_bound_batch = np.reshape(
-            upper_bound_batch, (-1, 1, n_in_with_channel)
-        )  # (batch_size, 1, n_in_with_channel)
-        box: np.ndarray = np.concatenate(
-            [lower_bound_batch, upper_bound_batch], 1
-        )  # (batch_size, 2, n_in_with_channel)
+        lower_flat = np.reshape(lower_bound_batch, (-1, n_in_with_channel))
+        upper_flat = np.reshape(upper_bound_batch, (-1, n_in_with_channel))
 
-        # build your input domain
-        # encode matrix C
-        C_gt: np.ndarray = np.repeat(
-            encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=current_batch_size, axis=0
-        )
-        # (batch_size, n_class, n_class-1)
+        if norm == 2:
+            upper = _predict_upper_l2(
+                model=model,
+                input_sample=input_sample,
+                lower_bounds=lower_flat,
+                upper_bounds=upper_flat,
+                gt_label=gt_label,
+                n_class=n_class,
+                channel=channel,
+                data_format=data_format,
+                eps_l2=eps_l2,
+            )
+        else:
+            # flatten lower_bound_batch and upper_bound_batch
+            lower_bound_batch = np.reshape(
+                lower_bound_batch, (-1, 1, n_in_with_channel)
+            )  # (batch_size, 1, n_in_with_channel)
+            upper_bound_batch = np.reshape(
+                upper_bound_batch, (-1, 1, n_in_with_channel)
+            )  # (batch_size, 1, n_in_with_channel)
+            box: np.ndarray = np.concatenate(
+                [lower_bound_batch, upper_bound_batch], 1
+            )  # (batch_size, 2, n_in_with_channel)
 
-        if decomon_model is None:
-            C: Tensor = Input((n_class, n_class - 1))
+            # build your input domain
+            # encode matrix C
+            C_gt: np.ndarray = np.repeat(
+                encode_matrix(n_class=n_class, groundtruth=gt_label)[None], repeats=current_batch_size, axis=0
+            )
+            # (batch_size, n_class, n_class-1)
 
-            decomon_model: keras.model.Model = clone(
-                model, final_affine=False, final_ibp=True, final_lower=False, backward_bounds=[C]
-            )  # return only upper bound
+            if decomon_model is None:
+                C: Tensor = Input((n_class, n_class - 1))
 
-        upper: np.ndarray = decomon_model.predict([box, C_gt], verbose=0)
+                decomon_model: keras.model.Model = clone(
+                    model, final_affine=False, final_ibp=True, final_lower=False, backward_bounds=[C]
+                )  # return only upper bound
+
+            upper = decomon_model.predict([box, C_gt], verbose=0)
         all_upper.append(upper)
 
     upper = np.concatenate(all_upper, axis=0)
@@ -241,6 +317,8 @@ def get_abstract_output_domain(
     data_format: str = "channels_first",
     n_class: int = 10,
     decomon_model: keras.models.Model = None,
+    norm: float = np.inf,
+    eps_l2: float | None = None,
 ) -> np.ndarray:
     """Computes the certified output bounds for a single input domain.
 
@@ -316,6 +394,22 @@ def get_abstract_output_domain(
                 free_indices, :
             ]  # open the free dimension
             upper_bound_np[free_indices, :] = upper_bound_c[free_indices, :]
+
+    lower_flat = np.reshape(lower_bound_np, (1, n_in_with_channel))
+    upper_flat = np.reshape(upper_bound_np, (1, n_in_with_channel))
+
+    if norm == 2:
+        return _predict_upper_l2(
+            model=model,
+            input_sample=input_sample,
+            lower_bounds=lower_flat,
+            upper_bounds=upper_flat,
+            gt_label=gt_label,
+            n_class=n_class,
+            channel=channel,
+            data_format=data_format,
+            eps_l2=eps_l2,
+        )
 
     # flatten lower_bound_batch and upper_bound_batch
     lower_bound_batch = np.reshape(
