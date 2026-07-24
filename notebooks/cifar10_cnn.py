@@ -71,8 +71,9 @@ def main(args: Namespace):
 
     #robust_eps003= [  6,  13,  15,  16,  19,  21,  23,  29,  34,  41,  44,  45,  50,  54, 60,  73,  75,  79,  82,  84,  90,  92,  98,  99, ]
     indices = [i for i in range(0,1000) if i not in robust_eps003]
-    indices = indices[:50]
+    indices = indices[:100]
     random.shuffle(indices)
+    indices = [24]
     print("Indices:", indices)
 
     dataframe_repository = "./results/CIFAR10/eps-{}".format(f'{eps}'.replace('0.', ''))
@@ -140,7 +141,7 @@ if __name__ == "__main__":
         "--norm",
         required=False,
         type=float,
-        default=2,
+        default=np.inf,
         help="Norm type for adversarial attacks (default: 2).",
     )
     parser.add_argument("--method", required=False, type=str, default="greedy", help="Search method for experiment A (milp or greedy).")

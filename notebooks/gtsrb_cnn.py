@@ -69,5 +69,5 @@ dico_a_1 = exp_A_1(
         channel=channel,
         data_format=data_format,
         n_class=n_class,
-        verbose=1,
+        verbose=2,
     )

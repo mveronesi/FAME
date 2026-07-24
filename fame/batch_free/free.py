@@ -544,6 +544,8 @@ def free_iteratively_k_features(
     )
 
     if refining_domain:
+        print("freeing remaining features")
+        print("initial free indices:", free_indices)
         while (
             abstract_set.sum(-1).max() != 0
         ):  # we have found new input features to free among remaining indices

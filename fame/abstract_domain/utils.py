@@ -239,25 +239,30 @@ def get_upper_box_l0(
     # keras.ops.sort is in ascending order. We sort it along axis n_in and take the last values
     # cardinality does not take into account xai indices and free indices that are set to 0
 
-    # ascending order
-    if isinstance(cardinality, int):
-        # ascending order
-        scoring_rank: Tensor = -keras.ops.sort(
-            -scoring_samples_wo_free, axis=1
-        )  # (None, n_in, n_h)
-        threshold: Tensor = scoring_rank[:, cardinality - 1][:, None]  # (None, 1, n_h..)
-    else:
-        batch_size: int = len(cardinality)
-        threshold: Tensor = -keras.ops.sort(-scoring_samples_wo_free, axis=1)[
-            np.arange(batch_size), cardinality - 1
-        ][:, None]
-        # (None, 1, n_h..)
+    scoring_rank: Tensor = -keras.ops.sort(
+        -scoring_samples_wo_free, axis=1
+    )  # (None, n_in, n_h)
 
-    # keep only scoring_samples lower than threshold
-    final_score_mask: Tensor = K.cast(threshold <= scoring_samples_wo_free, "int")
-    final_score: Tensor = K.sum(
-        scoring_samples_wo_free * final_score_mask, axis=1
-    )  # (None, n_h, ...)
+    if isinstance(cardinality, int):
+        k = min(max(int(cardinality), 0), n_in)
+        if k > 0:
+            final_score: Tensor = K.sum(scoring_rank[:, :k], axis=1)
+        else:
+            final_score = K.sum(0.0 * scoring_rank[:, :1], axis=1)
+    else:
+        batch_size = len(cardinality)
+        card_np = np.array(cardinality, dtype=int)
+        card_np = np.clip(card_np, 0, n_in)
+
+        score_rows = []
+        for row in range(batch_size):
+            k_row = int(card_np[row])
+            if k_row == 0:
+                row_score = K.sum(0.0 * scoring_rank[row : row + 1, :1], axis=1)
+            else:
+                row_score = K.sum(scoring_rank[row : row + 1, :k_row], axis=1)
+            score_rows.append(row_score)
+        final_score = K.concatenate(score_rows, axis=0)
 
     bias: Tensor = b + K.sum(
         K.sum(w * x_center_out, axis=axis_channel), axis=1
