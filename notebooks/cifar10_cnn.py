@@ -29,9 +29,9 @@ from argparse import ArgumentParser, Namespace
 from fame.abstract_domain.utils import check_is_robust 
 
 from configs.cifar10_configs import get_dataset, dataset_to_numpy, means_np, stddevs_np
+import random
 
-
-
+random.seed(42)
 
 
 def main(args: Namespace):
@@ -43,7 +43,7 @@ def main(args: Namespace):
 
     means_avg = np.mean(means_np)
     std_avg = np.mean(stddevs_np)
-    eps = (float(args.eps) / 255.) / std_avg
+    eps = args.eps
     norm = args.norm
 
     print("eps:", eps)
@@ -92,6 +92,7 @@ def main(args: Namespace):
     #robust_eps003= [  6,  13,  15,  16,  19,  21,  23,  29,  34,  41,  44,  45,  50,  54, 60,  73,  75,  79,  82,  84,  90,  92,  98,  99, ]
     indices = [i for i in range(0,1000) if i not in robust_eps003]
     indices = indices[:50]
+    random.shuffle(indices)
     print("Indices:", indices)
 
     dataframe_repository = "./results/CIFAR10/eps-{}/{}".format(f'{eps:.2f}'.replace('0.', ''),date)
@@ -154,7 +155,7 @@ def main(args: Namespace):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("--eps", required=True, type=int, help="Perturbation size for adversarial attacks (input value is divided by 255, the max pixel value).")
+    parser.add_argument("--eps", required=True, type=float, help="Perturbation size for adversarial attacks.")
     parser.add_argument("--norm", required=False, type=float, default=2, help="Norm type for adversarial attacks (default: 2).")
     parser.add_argument("--method", required=False, type=str, default="greedy", help="Search method for experiment A (milp or greedy).")
     args = parser.parse_args()
