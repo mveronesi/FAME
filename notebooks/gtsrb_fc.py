@@ -22,7 +22,7 @@ random.seed(42)
 
 def main(args: Namespace):
     filename = "gtsrb.pickle"
-    with open(filename, 'rb') as handle:
+    with open(os.path.join("models", filename), 'rb') as handle:
         data = pickle.load(handle)
 
     DATASET = "GTSRB"

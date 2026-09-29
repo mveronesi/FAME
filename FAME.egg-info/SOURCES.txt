@@ -1,7 +1,10 @@
 .gitignore
 .pre-commit-config.yaml
 LICENSE
+compute_mean.py
+instructions.md
 pyproject.toml
+requirements.txt
 FAME.egg-info/PKG-INFO
 FAME.egg-info/SOURCES.txt
 FAME.egg-info/dependency_links.txt
@@ -41,12 +44,15 @@ notebooks/FAME_MNIST_10x2_visu.ipynb
 notebooks/FAME_MNIST_cnn.ipynb
 notebooks/FAME_MNIST_visu.ipynb
 notebooks/VISU_VERIX.ipynb
+notebooks/cifar10_cnn.py
 notebooks/fame_vs_verix_size.png
 notebooks/fame_vs_verix_time.png
+notebooks/gtsrb_fc.py
 notebooks/script_gtsrb_10x2.py
 notebooks/script_gtsrb_cnn.py
 notebooks/script_mnist_10x2.py
 notebooks/script_mnist_cnn.py
+notebooks/shared_gpu.py
 notebooks/size_comparison.png
 notebooks/time_comparison.png
 notebooks/configs/cifar10_configs.py
