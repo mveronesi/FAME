@@ -66,7 +66,7 @@ def get_abstract_output_domain_singleton(
     data_format: str = "channels_first",
     n_class: int = 10,
     decomon_model: keras.models.Model = None,
-    batch_size: int =25,
+    batch_size: int = 15,
 ) -> np.ndarray:
     """Computes the certified output bounds when perturbing single features one by one.
 
@@ -289,7 +289,7 @@ def get_abstract_output_domain(
     if data_format == "channels_first":
         # (channel, n_in_wo_channel)
         input_sample_c: np.ndarray = np.reshape(input_sample, (channel, n_in_wo_channel))
-        lower_bound_c: np.ndarray = np.reshape(lower_bound, (channel, n_in_wo_channel))
+        lower_bound_c: np.ndarray = np.reshape(input_sample, (channel, n_in_wo_channel))
         upper_bound_c: np.ndarray = np.reshape(upper_bound, (channel, n_in_wo_channel))
     else:  # channels_last
         # (n_in_wo_channel, channel)

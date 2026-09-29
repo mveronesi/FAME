@@ -1,0 +1,8 @@
+numpy
+cvxpy
+keras>=3
+decomon @ git+https://github.com/airbus/decomon.git@refactor
+pandas
+
+[dev]
+tox>=4.6.4
