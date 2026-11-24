@@ -13,3 +13,5 @@ venv/
 *.csv
 *.log
 .DS_Store
+build/
+FAME.egg-info/
