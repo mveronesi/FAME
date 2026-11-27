@@ -9,7 +9,9 @@ measures, for the same Keras classifier used by FAME:
   background B is perturbed with Gaussian noise;
 - comprehensiveness: mean softmax when the explanation E is perturbed and the
   background B is kept;
-- a random baseline using a random pixel mask with the same cardinality as E.
+- a random baseline using a random pixel mask with the same cardinality as E;
+- optionally (--pgd_rho), adversarial sufficiency: softmax after an untargeted
+  l2 PGD attack with budget rho restricted to the background B.
 
 The noise scheme replicates robust-XAI `sufficiency.py`: each perturbed
 coordinate receives i.i.d. Gaussian noise with standard deviation
@@ -36,6 +38,7 @@ from typing import List
 
 import keras
 import numpy as np
+import torch
 from keras.models import load_model
 from tqdm import tqdm
 
@@ -84,6 +87,58 @@ def mean_softmax_under_noise(
     return probs.mean(axis=0).tolist()
 
 
+def _model_torch_device(model: keras.models.Model) -> torch.device:
+    """Device on which the Keras (torch backend) model weights live."""
+    try:
+        return model.weights[0].value.device
+    except Exception:
+        return torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+
+def pgd_l2_attack_softmax(
+    model: keras.models.Model,
+    sample: np.ndarray,
+    label: int,
+    pixels_to_perturb: np.ndarray,
+    rho: float,
+    n_steps: int,
+) -> List[float]:
+    """
+    Untargeted l2 PGD attack restricted to the pixels marked with 1 in
+    `pixels_to_perturb` (shape (N_PIXELS,), all 3 channels of a perturbed pixel
+    are attacked), with l2 budget `rho` over all perturbed coordinates.
+    Maximizes the cross-entropy w.r.t. `label` (the original prediction) and
+    returns the softmax of the attacked sample. Gradients flow through the
+    Keras model thanks to the torch backend.
+    """
+    if float(pixels_to_perturb.sum()) == 0 or rho <= 0:
+        # Nothing to perturb: return the clean softmax of the classifier.
+        return predict_softmax(model, sample[None])[0].tolist()
+
+    device = _model_torch_device(model)
+    coord_mask = torch.as_tensor(
+        np.repeat(pixels_to_perturb.astype(np.float32), CHANNEL), device=device
+    )
+    x = torch.as_tensor(sample[None], device=device)
+    label_tensor = torch.tensor([label], device=device)
+    step_size = 2.5 * rho / n_steps
+    delta = torch.zeros_like(x, requires_grad=True)
+    for _ in range(n_steps):
+        logits = model(x + delta, training=False)
+        loss = torch.nn.functional.cross_entropy(logits, label_tensor)
+        grad = torch.autograd.grad(loss, delta)[0] * coord_mask
+        grad_norm = grad.flatten().norm().clamp_min(1e-12)
+        delta = delta + step_size * grad / grad_norm
+        # Project onto the l2 ball of radius rho (restricted to the mask).
+        delta_norm = delta.flatten().norm()
+        if delta_norm.item() > rho:
+            delta = delta * (rho / delta_norm)
+        delta = (delta * coord_mask).detach().requires_grad_(True)
+    with torch.no_grad():
+        probs = torch.softmax(model(x + delta, training=False), dim=1)
+    return probs[0].cpu().tolist()
+
+
 def generate_random_mask(explanation_mask: np.ndarray, rng: np.random.Generator) -> np.ndarray:
     """Random binary pixel mask with the same cardinality as `explanation_mask`."""
     n_important = int(explanation_mask.sum())
@@ -108,6 +163,8 @@ def process_sample(
     noise_level: float,
     n_softmax_samples: int,
     rng: np.random.Generator,
+    pgd_rho: float,
+    pgd_steps: int,
 ) -> dict:
     json_object = {}
     json_object["numerical_label"] = int(numerical_label)
@@ -160,6 +217,27 @@ def process_sample(
         n_monte_carlo=n_softmax_samples,
         rng=rng,
     )
+
+    # Adversarial sufficiency: l2 PGD attack with budget pgd_rho restricted to
+    # the non-important pixels (and the random-mask baseline counterpart).
+    if pgd_rho is not None and pgd_rho > 0:
+        attacked_label = json_object["original_classifier_prediction"]
+        json_object["pgd_sufficiency_softmax"] = pgd_l2_attack_softmax(
+            model=model,
+            sample=sample,
+            label=attacked_label,
+            pixels_to_perturb=1.0 - explanation_mask,
+            rho=pgd_rho,
+            n_steps=pgd_steps,
+        )
+        json_object["random_pgd_sufficiency_softmax"] = pgd_l2_attack_softmax(
+            model=model,
+            sample=sample,
+            label=attacked_label,
+            pixels_to_perturb=1.0 - random_explanation_mask,
+            rho=pgd_rho,
+            n_steps=pgd_steps,
+        )
 
     with open(out_filepath, "w") as f:
         json.dump(json_object, f, indent=4)
@@ -220,6 +298,8 @@ def main(args: Namespace) -> None:
             noise_level=args.noise_level,
             n_softmax_samples=args.n_softmax_samples,
             rng=rng,
+            pgd_rho=args.pgd_rho,
+            pgd_steps=args.pgd_steps,
         )
     print(f"Done. Results in {out_folder}")
 
@@ -229,6 +309,8 @@ if __name__ == "__main__":
     parser.add_argument("--maps_dir", required=True, type=str, help="Folder with the <index>.npy attribution maps saved by gtsrb_fc.py.")
     parser.add_argument("--noise_level", required=False, type=float, default=15.0, help="Noise level for the sufficiency perturbations (same scheme as robust-XAI, default matches its GTSRB setting).")
     parser.add_argument("--n_softmax_samples", required=False, type=int, default=100, help="Number of Monte Carlo noise draws to average the softmax over.")
+    parser.add_argument("--pgd_rho", required=False, type=float, default=None, help="l2 budget of the PGD attack on the non-important pixels. If not specified, the PGD experiment is skipped.")
+    parser.add_argument("--pgd_steps", required=False, type=int, default=50, help="Number of PGD steps (step size is 2.5 * pgd_rho / pgd_steps).")
     parser.add_argument("--out_folder", required=False, type=str, default=None, help="Output folder for the results.")
     parser.add_argument("--seed", required=False, type=int, default=42, help="Random seed for reproducibility.")
     parser.add_argument("--invert_mask", action="store_true", help="Invert the attribution mask if set (treat freed pixels as the explanation).")
