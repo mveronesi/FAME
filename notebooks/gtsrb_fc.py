@@ -50,7 +50,7 @@ def main(args: Namespace):
     x_test = x_test.astype('float32') / 255
     x_test = np.reshape(x_test, (-1, 3072))
 
-    k_model = load_model("./models/xairobas_gtsrb-cnn.keras")
+    k_model = load_model("./models/xairobas_gtsrb-10x2.keras")
 
     def get_predicted_label(input_sample: np.ndarray,) -> int:
         prediction = k_model.predict(np.asarray(input_sample)[None], verbose=0)
