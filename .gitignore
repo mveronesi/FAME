@@ -16,3 +16,4 @@ venv/
 build/
 FAME.egg-info/
 *.npy
+*.json
