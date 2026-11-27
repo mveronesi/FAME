@@ -33,9 +33,11 @@ def main(args: Namespace):
     dataframe_repository = "./results"
     filename = "{}_{}_{}_norm_{}_eps_{}".format(DATASET, MODEL, args.exp, norm, str(eps).replace("0.", ""))
     output_path = Path(f"{dataframe_repository}/{filename}.csv").resolve()
+    maps_dir = Path(f"{dataframe_repository}/{filename}_maps").resolve()
     if output_path.exists() and args.overwrite:
         output_path.unlink()
     print(f"Saving results to {output_path}")
+    print(f"Saving attribution maps to {maps_dir}")
 
     channel = 3
     data_format = "channels_last"
@@ -96,7 +98,8 @@ def main(args: Namespace):
                 data_format=data_format,
                 n_class=n_class,
                 verbose=1,
-                norm=norm
+                norm=norm,
+                maps_dir=maps_dir,
             )
         except Exception as e:
             print(f"Error processing index {i}: {e}")

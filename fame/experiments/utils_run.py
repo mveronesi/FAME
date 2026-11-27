@@ -28,6 +28,19 @@ def save_results_to_csv(dico: dict, output_path: Path):
     df.to_csv(output_path, index=False, mode=mode, header=header)
 
 
+def save_attribution_map(
+    maps_dir: Path, index: int, freed_indices: np.ndarray, n_features: int
+):
+    """
+    Save the binary attribution map of a sample as `<maps_dir>/<sample_index>.npy`.
+    1 = important / non-robust feature, 0 = freed / robustness certified.
+    """
+    attribution_map = np.ones(n_features, dtype=np.uint8)
+    attribution_map[np.asarray(freed_indices, dtype=int)] = 0
+    maps_dir.mkdir(parents=True, exist_ok=True)
+    np.save(maps_dir / f"{index}.npy", attribution_map)
+
+
 ### A.1 in one round: running time and largest free set using greedy only
 def exp_A_1(
     model: keras.models.Model,
@@ -43,7 +56,8 @@ def exp_A_1(
     sleep_time: int = 1,  # one second between each run
     norm: Literal["linf", "l2"] = "linf",
     means=None, 
-    stddev=None
+    stddev=None,
+    maps_dir: Path | None = None,
 ):
     start_time: float
     end_time: float
@@ -115,7 +129,13 @@ def exp_A_1(
             raise ValueError(f"unknown norm {norm}")
         
         end_time = time.time()
-        xai_size = np.max(abstract_set.sum(-1))
+        sizes = abstract_set.sum(-1)
+        xai_size = np.max(sizes)
+        if maps_dir is not None:
+            freed_mask = abstract_set[np.argmax(sizes)]
+            save_attribution_map(
+                maps_dir, index, np.where(freed_mask)[0], n_in_wo_channel
+            )
         running_time = end_time - start_time
 
         if verbose:
@@ -148,7 +168,8 @@ def exp_A_2(
     sleep_time: int = 1,  # one second between each run
     norm: Literal["linf", "l2"] = "linf",
     means = None, 
-    stddev = None
+    stddev = None,
+    maps_dir: Path | None = None,
 ):
     start_time: float
     end_time: float
@@ -214,6 +235,8 @@ def exp_A_2(
         end_time = time.time()
         abstract_set = abstract_set + singleton_set
         xai_size = len(abstract_set)
+        if maps_dir is not None:
+            save_attribution_map(maps_dir, index, abstract_set, n_in_wo_channel)
         running_time = end_time - start_time
 
         if verbose:
